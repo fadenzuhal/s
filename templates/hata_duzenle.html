@@ -1,43 +1,65 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
-    <title>Hata Düzenle</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hata Raporu Düzenle</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Hata Düzenle</h1>
-        {% if hata %}
+        <h1>Hata Raporu Düzenle</h1>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
         <form method="POST">
+            {{ form.hidden_tag() }}
             <div class="mb-3">
-                <label class="form-label">Ürün Adı</label>
-                <input type="text" class="form-control" name="urun_adi" value="{{ hata.urun_adi }}" required>
+                <label for="urun_adi" class="form-label">Ürün Adı</label>
+                {{ form.urun_adi(class="form-select") }}
             </div>
             <div class="mb-3">
-                <label class="form-label">Bayi Adı</label>
-                <input type="text" class="form-control" name="bayi_adi" value="{{ hata.bayi_adi }}" required>
+                <label for="bayi_adi" class="form-label">Bayi Adı</label>
+                {{ form.bayi_adi(class="form-select") }}
             </div>
             <div class="mb-3">
-                <label class="form-label">Hata Tarihi</label>
-                <input type="date" class="form-control" name="hata_tarihi" value="{{ hata.hata_tarihi }}" required>
+                <label for="alici_adi" class="form-label">Alıcı Adı</label>
+                {{ form.alici_adi(class="form-select") }}
             </div>
             <div class="mb-3">
-                <label class="form-label">Hata Türü</label>
-                <input type="text" class="form-control" name="hata_turu" value="{{ hata.hata_turu }}" required>
+                <label for="satici_adi" class="form-label">Satıcı Adı</label>
+                {{ form.satici_adi(class="form-select") }}
             </div>
             <div class="mb-3">
-                <label class="form-label">Durum</label>
-                <select class="form-control" name="durum" required>
-                    <option value="Açık" {% if hata.durum == 'Açık' %}selected{% endif %}>Açık</option>
-                    <option value="Çözüldü" {% if hata.durum == 'Çözüldü' %}selected{% endif %}>Çözüldü</option>
-                </select>
+                <label for="hata_tarihi" class="form-label">Hata Tarihi</label>
+                {{ form.hata_tarihi(class="form-control") }}
             </div>
-            <button type="submit" class="btn btn-primary">Kaydet</button>
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">Geri</a>
+            <div class="mb-3">
+                <label for="hata_turu" class="form-label">Hata Türü</label>
+                {{ form.hata_turu(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                <label for="aciklama" class="form-label">Açıklama</label>
+                {{ form.aciklama(class="form-control") }}
+            </div>
+            <div class="mb-3">
+                <label for="durum" class="form-label">Durum</label>
+                {{ form.durum(class="form-select") }}
+            </div>
+            {{ form.submit(class="btn btn-primary") }}
         </form>
-        {% else %}
-        <p>Hata bulunamadı.</p>
-        {% endif %}
+        
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Geri Dön</a>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

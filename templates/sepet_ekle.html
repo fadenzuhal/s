@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hata Raporu Ekle</title>
+    <title>Sepete Ürün Ekle</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Hata Raporu Ekle</h1>
+        <h1>Sepete Ürün Ekle</h1>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -29,32 +29,8 @@
                 {{ form.urun_adi(class="form-select") }}
             </div>
             <div class="mb-3">
-                <label for="bayi_adi" class="form-label">Bayi Adı</label>
-                {{ form.bayi_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="alici_adi" class="form-label">Alıcı Adı</label>
-                {{ form.alici_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="satici_adi" class="form-label">Satıcı Adı</label>
-                {{ form.satici_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="hata_tarihi" class="form-label">Hata Tarihi</label>
-                {{ form.hata_tarihi(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="hata_turu" class="form-label">Hata Türü</label>
-                {{ form.hata_turu(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="aciklama" class="form-label">Açıklama</label>
-                {{ form.aciklama(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="durum" class="form-label">Durum</label>
-                {{ form.durum(class="form-select") }}
+                <label for="miktar" class="form-label">Miktar</label>
+                {{ form.miktar(class="form-control") }}
             </div>
             {{ form.submit(class="btn btn-primary") }}
         </form>
