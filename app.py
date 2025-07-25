@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
@@ -8,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import logging
 from datetime import datetime
+import json
 from config.db_config import get_db_connection, close_db_connection
 from models.hata import HataRaporu
 
@@ -25,7 +25,6 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-
 # Kullanıcı sınıfı
 class User(UserMixin):
     def __init__(self, kullanici_id, email, ad, rol):
@@ -33,7 +32,6 @@ class User(UserMixin):
         self.email = email
         self.ad = ad
         self.rol = rol
-
 
 @login_manager.user_loader
 def load_user(kullanici_id):
@@ -54,7 +52,6 @@ def load_user(kullanici_id):
         return None
     finally:
         close_db_connection(connection)
-
 
 # Dropdown seçenekleri
 def get_dropdown_choices():
@@ -80,7 +77,6 @@ def get_dropdown_choices():
     finally:
         close_db_connection(connection)
 
-
 # Hata formu
 class HataForm(FlaskForm):
     urun_adi = SelectField('Ürün Adı', validators=[DataRequired()], coerce=str)
@@ -102,7 +98,6 @@ class HataForm(FlaskForm):
         self.alici_adi.choices = [('', 'Seçiniz')] + (alicilar or [])
         self.satici_adi.choices = [('', 'Seçiniz')] + (saticilar or [])
 
-
 # Sepet formu
 class SepetForm(FlaskForm):
     urun_adi = SelectField('Ürün Adı', validators=[DataRequired()], coerce=str)
@@ -113,7 +108,6 @@ class SepetForm(FlaskForm):
         super(SepetForm, self).__init__(*args, **kwargs)
         urunler, _, _, _ = get_dropdown_choices()
         self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
-
 
 # Rotalar
 @app.route('/login', methods=['GET', 'POST'])
@@ -148,7 +142,6 @@ def login():
         finally:
             close_db_connection(connection)
     return render_template('login.html')
-
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -185,14 +178,12 @@ def register():
             close_db_connection(connection)
     return render_template('register.html')
 
-
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash('Çıkış yapıldı.', 'success')
     return redirect(url_for('login'))
-
 
 @app.route('/')
 @app.route('/index')
@@ -243,7 +234,6 @@ def index():
     finally:
         close_db_connection(connection)
 
-
 @app.route('/hata_ekle', methods=['GET', 'POST'])
 @login_required
 def hata_ekle():
@@ -281,7 +271,6 @@ def hata_ekle():
         finally:
             close_db_connection(connection)
     return render_template('hata_ekle.html', form=form)
-
 
 @app.route('/hata_duzenle/<int:hata_id>', methods=['GET', 'POST'])
 @login_required
@@ -337,7 +326,7 @@ def hata_duzenle(hata_id):
                                form.urun_adi.data,
                                form.bayi_adi.data,
                                form.alici_adi.data or None,
-                               form.satici_ada.data or None,
+                               form.satici_adi.data or None,
                                form.hata_tarihi.data,
                                form.hata_turu.data,
                                form.aciklama.data,
@@ -355,7 +344,6 @@ def hata_duzenle(hata_id):
     finally:
         close_db_connection(connection)
     return redirect(url_for('index'))
-
 
 @app.route('/hata_sil/<int:hata_id>', methods=['GET'])
 @login_required
@@ -382,7 +370,6 @@ def hata_sil(hata_id):
     finally:
         close_db_connection(connection)
     return redirect(url_for('index'))
-
 
 @app.route('/sepet_ekle', methods=['GET', 'POST'])
 @login_required
@@ -425,7 +412,6 @@ def sepet_ekle():
             close_db_connection(connection)
     return render_template('sepet_ekle.html', form=form)
 
-
 @app.route('/sepet')
 @login_required
 def sepet():
@@ -465,7 +451,6 @@ def sepet():
         close_db_connection(connection)
     return render_template('sepet.html', sepet_items=sepet_items)
 
-
 @app.route('/siparis_olustur')
 @login_required
 def siparis_olustur():
@@ -479,7 +464,7 @@ def siparis_olustur():
         cursor.execute("SELECT sepet_id, urun_id, miktar FROM sepet WHERE kullanici_id = %s", (current_user.id,))
         sepet_items = cursor.fetchall()
         if not sepet_items:
-            flash('Sepet boş, sipariş oluşturulamadı.', 'danger')
+            flash('Sepet boş, sipariş oluşturulmadı.', 'danger')
             return redirect(url_for('sepet'))
 
         basarili_urunler = []
@@ -523,7 +508,6 @@ def siparis_olustur():
         close_db_connection(connection)
     return redirect(url_for('sepet'))
 
-
 @app.route('/siparisler')
 @login_required
 def siparisler():
@@ -559,7 +543,6 @@ def siparisler():
         close_db_connection(connection)
     return render_template('siparisler.html', siparisler=siparisler)
 
-
 @app.route('/sepet_sil/<int:sepet_id>', methods=['GET'])
 @login_required
 def sepet_sil(sepet_id):
@@ -587,12 +570,11 @@ def sepet_sil(sepet_id):
         close_db_connection(connection)
     return redirect(url_for('sepet'))
 
-
 @app.route('/satici_analiz')
 @login_required
 def satici_analiz():
-    if current_user.rol != 'admin':
-        flash('Bu sayfaya erişim yetkiniz yok.', 'danger')
+    if current_user.rol != 'satici':
+        flash('Bu sayfaya yalnızca satıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
 
     connection = None
@@ -600,7 +582,8 @@ def satici_analiz():
         connection = get_db_connection()
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
-            return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[])
+            return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
+                                  satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[], gunluk_satis_data=[])
 
         cursor = connection.cursor()
 
@@ -613,9 +596,16 @@ def satici_analiz():
                        ORDER BY toplam_miktar DESC
                        """)
         satici_siparisler = [
-            {'satici_id': row[0], 'ad': row[1], 'siparis_sayisi': row[2], 'toplam_miktar': row[3] or 0}
+            {
+                'satici_id': row[0],
+                'ad': (row[1] or 'Bilinmeyen').replace('"', '').replace("'", '').strip(),
+                'siparis_sayisi': row[2],
+                'toplam_miktar': row[3] or 0
+            }
             for row in cursor.fetchall()
         ]
+        satici_siparis_labels = [satici['ad'] for satici in satici_siparisler]
+        satici_siparis_data = [satici['toplam_miktar'] for satici in satici_siparisler]
 
         # Hata türleri ve sıklıkları
         cursor.execute("""
@@ -625,36 +615,54 @@ def satici_analiz():
                        ORDER BY hata_sayisi DESC
                        """)
         hata_turleri = [
-            {'hata_turu': row[0], 'hata_sayisi': row[1]}
+            {
+                'hata_turu': (row[0] or 'Bilinmeyen').replace('"', '').replace("'", '').strip(),
+                'hata_sayisi': row[1]
+            }
             for row in cursor.fetchall()
         ]
 
         # Günlük satış trendleri
         cursor.execute("""
-                       SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi, SUM(miktar) AS toplam_miktar
-                       FROM siparisler
+                       SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar
+                       FROM siparisler p
                        GROUP BY DATE(siparis_tarihi)
                        ORDER BY gun
                        """)
         gunluk_satislar = [
-            {'gun': row[0].strftime('%Y-%m-%d'), 'siparis_sayisi': row[1], 'toplam_miktar': row[2]}
+            {
+                'gun': row[0].strftime('%Y-%m-%d') if row[0] else 'Bilinmeyen',
+                'siparis_sayisi': row[1],
+                'toplam_miktar': row[2] or 0
+            }
             for row in cursor.fetchall()
         ]
+        gunluk_satis_labels = [satis['gun'] for satis in gunluk_satislar]
+        gunluk_satis_data = [satis['siparis_sayisi'] for satis in gunluk_satislar]
+
+        logger.debug(f"satici_siparis_labels: {json.dumps(satici_siparis_labels)}")
+        logger.debug(f"satici_siparis_data: {json.dumps(satici_siparis_data)}")
+        logger.debug(f"gunluk_satis_labels: {json.dumps(gunluk_satis_labels)}")
+        logger.debug(f"gunluk_satis_data: {json.dumps(gunluk_satis_data)}")
 
         return render_template(
             'satici_analiz.html',
             satici_siparisler=satici_siparisler,
             hata_turleri=hata_turleri,
-            gunluk_satislar=gunluk_satislar
+            gunluk_satislar=gunluk_satislar,
+            satici_siparis_labels=satici_siparis_labels,
+            satici_siparis_data=satici_siparis_data,
+            gunluk_satis_labels=gunluk_satis_labels,
+            gunluk_satis_data=gunluk_satis_data
         )
 
     except Exception as e:
         logger.error(f"Satıcı analiz hatası: {str(e)}")
         flash(f"Hata oluştu: {str(e)}", 'danger')
-        return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[])
+        return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
+                              satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[], gunluk_satis_data=[])
     finally:
         close_db_connection(connection)
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080, use_reloader=False)
