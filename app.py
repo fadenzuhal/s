@@ -151,7 +151,7 @@ def register():
         email = request.form.get('email')
         sifre = request.form.get('sifre')
         ad = request.form.get('ad')
-        rol = request.form.get('rol', 'kullanici')
+        rol = 'alici'  # 'kullanici' yerine 'alici' varsayılan
         connection = None
         try:
             connection = get_db_connection()
@@ -570,6 +570,7 @@ def sepet_sil(sepet_id):
         close_db_connection(connection)
     return redirect(url_for('sepet'))
 
+
 @app.route('/satici_analiz')
 @login_required
 def satici_analiz():
@@ -583,7 +584,8 @@ def satici_analiz():
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
             return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
-                                  satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[], gunluk_satis_data=[])
+                                   satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
+                                   gunluk_satis_data=[])
 
         cursor = connection.cursor()
 
@@ -600,7 +602,7 @@ def satici_analiz():
                 'satici_id': row[0],
                 'ad': (row[1] or 'Bilinmeyen').replace('"', '').replace("'", '').strip(),
                 'siparis_sayisi': row[2],
-                'toplam_miktar': row[3] or 0
+                'toplam_miktar': float(row[3]) if row[3] else 0  # Decimal'i floata çevir
             }
             for row in cursor.fetchall()
         ]
@@ -633,7 +635,7 @@ def satici_analiz():
             {
                 'gun': row[0].strftime('%Y-%m-%d') if row[0] else 'Bilinmeyen',
                 'siparis_sayisi': row[1],
-                'toplam_miktar': row[2] or 0
+                'toplam_miktar': float(row[2]) if row[2] else 0  # Decimal'i floata çevir
             }
             for row in cursor.fetchall()
         ]
@@ -660,7 +662,8 @@ def satici_analiz():
         logger.error(f"Satıcı analiz hatası: {str(e)}")
         flash(f"Hata oluştu: {str(e)}", 'danger')
         return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
-                              satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[], gunluk_satis_data=[])
+                               satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
+                               gunluk_satis_data=[])
     finally:
         close_db_connection(connection)
 
