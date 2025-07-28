@@ -26,6 +26,31 @@
             {% endif %}
         {% endwith %}
 
+        <h2>En Çok Sipariş Edilen Ürünler</h2>
+        {% if en_cok_siparis_urunler %}
+            <table class="table table-striped" style="margin-bottom: 10px;">
+                <thead>
+                    <tr>
+                        <th>Ürün Adı</th>
+                        <th>Sipariş Sayısı</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for urun in en_cok_siparis_urunler %}
+                        <tr>
+                            <td>{{ urun.urun_adi }}</td>
+                            <td>{{ urun.siparis_sayisi }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if en_cok_siparis_labels and en_cok_siparis_data %}
+                <canvas id="enCokSiparisChart" width="300" height="150"></canvas>
+            {% endif %}
+        {% else %}
+            <p>Henüz en çok sipariş edilen ürün verisi bulunamadı.</p>
+        {% endif %}
+
         <h2>Sipariş Analizi</h2>
         <table class="table table-striped" style="margin-bottom: 10px;">
             <thead>
@@ -111,6 +136,15 @@
     </div>
 
     <script>
+        {% if en_cok_siparis_labels and en_cok_siparis_data %}
+            const enCokSiparisCtx = document.getElementById('enCokSiparisChart').getContext('2d');
+            new Chart(enCokSiparisCtx, {
+                type: 'bar',
+                data: { labels: {{ en_cok_siparis_labels|tojson }}, datasets: [{ label: 'Sipariş Sayısı', data: {{ en_cok_siparis_data|tojson }}, backgroundColor: 'rgba(54, 162, 235, 0.5)', borderColor: 'rgba(54, 162, 235, 1)', borderWidth: 1 }] },
+                options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: true } } }
+            });
+        {% endif %}
+
         {% if satici_siparis_labels and satici_siparis_data %}
             const saticiSiparisCtx = document.getElementById('saticiSiparisChart').getContext('2d');
             new Chart(saticiSiparisCtx, {
