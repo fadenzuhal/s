@@ -1,3 +1,4 @@
+import mysql
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
@@ -226,6 +227,8 @@ def index():
             }
             for row in cursor.fetchall()
         ]
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Index sayfası görüntülendi'))
+        connection.commit()
         return render_template('index.html', hatalar=hatalar)
     except Exception as e:
         logger.error(f"Index error: {str(e)}")
@@ -261,6 +264,8 @@ def hata_ekle():
                                form.durum.data,
                                current_user.id
                            ))
+            connection.commit()
+            cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Hata eklendi'))
             connection.commit()
             flash('Hata raporu başarıyla eklendi!', 'success')
             return redirect(url_for('index'))
@@ -334,6 +339,8 @@ def hata_duzenle(hata_id):
                                hata_id
                            ))
             connection.commit()
+            cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Hata düzenlendi'))
+            connection.commit()
             flash('Hata raporu başarıyla güncellendi!', 'success')
             return redirect(url_for('index'))
         return render_template('hata_duzenle.html', form=form, hata_id=hata_id)
@@ -359,6 +366,8 @@ def hata_sil(hata_id):
                        (hata_id, current_user.id))
         if cursor.fetchone():
             cursor.execute("DELETE FROM hatalar WHERE hata_id = %s", (hata_id,))
+            connection.commit()
+            cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Hata silindi'))
             connection.commit()
             flash('Hata raporu silindi!', 'success')
         else:
@@ -389,6 +398,8 @@ def sepet_ekle():
                 flash('Ürün bulunamadı.', 'danger')
                 return render_template('sepet_ekle.html', form=form)
             urun_adi, stok, fiyat = urun
+            if stok <= 5:  # Stok 5’in altına düştüğünde uyarı
+                flash(f'{urun_adi} için stok azaldı ({stok} kaldı)!', 'warning')
             if stok <= 0:
                 flash(f'{urun_adi} için stok bulunmamaktadır.', 'danger')
                 return render_template('sepet_ekle.html', form=form)
@@ -401,6 +412,7 @@ def sepet_ekle():
                            INSERT INTO sepet (kullanici_id, urun_id, miktar)
                            VALUES (%s, %s, %s)
                            """, (current_user.id, form.urun_adi.data, form.miktar.data))
+            cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Sepete ürün eklendi'))
             connection.commit()
             flash(f'{urun_adi} sepete eklendi!', 'success')
             return redirect(url_for('sepet'))
@@ -444,6 +456,8 @@ def sepet():
         if sifir_fiyat_urunler:
             flash(f"Uyarı: {', '.join(sifir_fiyat_urunler)} ürünlerinin fiyatı sıfır. Toplam fiyat etkilenebilir.",
                   'warning')
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Sepet görüntülendi'))
+        connection.commit()
     except Exception as e:
         logger.error(f"Sepet görüntüleme hatası: {str(e)}")
         flash(f"Hata oluştu: {str(e)}", 'danger')
@@ -491,6 +505,8 @@ def siparis_olustur():
             basarili_urunler.append(urun_adi)
 
         connection.commit()
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Sipariş oluşturuldu'))
+        connection.commit()
 
         if basarili_urunler:
             flash(f"Sipariş başarıyla oluşturuldu: {', '.join(basarili_urunler)}", 'success')
@@ -536,6 +552,8 @@ def siparisler():
                 'durum': row[4],
                 'satici_adi': row[5] or 'Belirtilmemiş'
             })
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Siparişler görüntülendi'))
+        connection.commit()
     except Exception as e:
         logger.error(f"Error fetching orders: {str(e)}")
         flash(f"Sipariş görüntüleme hatası: {str(e)}", 'danger')
@@ -559,6 +577,8 @@ def sepet_sil(sepet_id):
         if item:
             cursor.execute("DELETE FROM sepet WHERE sepet_id = %s", (sepet_id,))
             connection.commit()
+            cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Sepet öğesi silindi'))
+            connection.commit()
             flash('Ürün sepetten silindi!', 'success')
         else:
             flash('Sepet öğesi bulunamadı.', 'danger')
@@ -569,7 +589,6 @@ def sepet_sil(sepet_id):
     finally:
         close_db_connection(connection)
     return redirect(url_for('sepet'))
-
 
 @app.route('/satici_analiz')
 @login_required
@@ -584,88 +603,137 @@ def satici_analiz():
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
             return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
-                                   satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
-                                   gunluk_satis_data=[])
+                                satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
+                                gunluk_satis_data=[], aylik_satis_labels=[], aylik_satis_data=[], cari_fiyat_labels=[], cari_fiyat_data=[])
 
         cursor = connection.cursor()
 
-        # Satıcı bazlı sipariş ve toplam miktar
-        cursor.execute("""
-                       SELECT s.satici_id, s.ad, COUNT(p.siparis_id) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar
-                       FROM saticilar s
-                                LEFT JOIN siparisler p ON s.satici_id = p.satici_id
-                       GROUP BY s.satici_id, s.ad
-                       ORDER BY toplam_miktar DESC
-                       """)
-        satici_siparisler = [
-            {
-                'satici_id': row[0],
-                'ad': (row[1] or 'Bilinmeyen').replace('"', '').replace("'", '').strip(),
-                'siparis_sayisi': row[2],
-                'toplam_miktar': float(row[3]) if row[3] else 0  # Decimal'i floata çevir
-            }
-            for row in cursor.fetchall()
-        ]
-        satici_siparis_labels = [satici['ad'] for satici in satici_siparisler]
-        satici_siparis_data = [satici['toplam_miktar'] for satici in satici_siparisler]
+        # Satıcı bazlı siparişler
+        cursor.execute("SELECT s.ad, COUNT(p.siparis_id) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar "
+                       "FROM saticilar s LEFT JOIN siparisler p ON s.satici_id = p.satici_id "
+                       "GROUP BY s.ad ORDER BY toplam_miktar DESC")
+        satici_siparisler = cursor.fetchall()
+        satici_siparis_labels = [row[0] for row in satici_siparisler]
+        satici_siparis_data = [row[2] for row in satici_siparisler]
 
-        # Hata türleri ve sıklıkları
-        cursor.execute("""
-                       SELECT hata_turu, COUNT(*) AS hata_sayisi
-                       FROM hatalar
-                       GROUP BY hata_turu
-                       ORDER BY hata_sayisi DESC
-                       """)
-        hata_turleri = [
-            {
-                'hata_turu': (row[0] or 'Bilinmeyen').replace('"', '').replace("'", '').strip(),
-                'hata_sayisi': row[1]
-            }
-            for row in cursor.fetchall()
-        ]
+        # Hata türleri
+        cursor.execute("SELECT hata_turu AS HataTuru, COUNT(*) AS hata_sayisi FROM hatalar GROUP BY hata_turu ORDER BY hata_sayisi DESC")
+        hata_turleri = cursor.fetchall()
+        hata_turleri_labels = [row[0] for row in hata_turleri]
+        hata_turleri_data = [row[1] for row in hata_turleri]
 
         # Günlük satış trendleri
-        cursor.execute("""
-                       SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar
-                       FROM siparisler p
-                       GROUP BY DATE(siparis_tarihi)
-                       ORDER BY gun
-                       """)
-        gunluk_satislar = [
-            {
-                'gun': row[0].strftime('%Y-%m-%d') if row[0] else 'Bilinmeyen',
-                'siparis_sayisi': row[1],
-                'toplam_miktar': float(row[2]) if row[2] else 0  # Decimal'i floata çevir
-            }
-            for row in cursor.fetchall()
-        ]
-        gunluk_satis_labels = [satis['gun'] for satis in gunluk_satislar]
-        gunluk_satis_data = [satis['siparis_sayisi'] for satis in gunluk_satislar]
+        cursor.execute("SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi "
+                       "FROM siparisler GROUP BY DATE(siparis_tarihi) ORDER BY gun")
+        gunluk_satislar = cursor.fetchall()
+        gunluk_satis_labels = [row[0].strftime('%Y-%m-%d') for row in gunluk_satislar]
+        gunluk_satis_data = [row[1] for row in gunluk_satislar]
 
-        logger.debug(f"satici_siparis_labels: {json.dumps(satici_siparis_labels)}")
-        logger.debug(f"satici_siparis_data: {json.dumps(satici_siparis_data)}")
-        logger.debug(f"gunluk_satis_labels: {json.dumps(gunluk_satis_labels)}")
-        logger.debug(f"gunluk_satis_data: {json.dumps(gunluk_satis_data)}")
+        # Aylık satış trendleri
+        cursor.execute("SELECT DATE_FORMAT(siparis_tarihi, '%Y-%m') AS ay, COUNT(*) AS siparis_sayisi "
+                       "FROM siparisler GROUP BY DATE_FORMAT(siparis_tarihi, '%Y-%m') ORDER BY ay")
+        aylik_satislar = cursor.fetchall()
+        aylik_satis_labels = [row[0] for row in aylik_satislar]
+        aylik_satis_data = [row[1] for row in aylik_satislar]
 
-        return render_template(
-            'satici_analiz.html',
-            satici_siparisler=satici_siparisler,
-            hata_turleri=hata_turleri,
-            gunluk_satislar=gunluk_satislar,
-            satici_siparis_labels=satici_siparis_labels,
-            satici_siparis_data=satici_siparis_data,
-            gunluk_satis_labels=gunluk_satis_labels,
-            gunluk_satis_data=gunluk_satis_data
-        )
+        # Cari fiyatlar
+        cursor.execute("SELECT urun_adi, cari_fiyat FROM urunler")
+        cari_fiyatlar = cursor.fetchall()
+        cari_fiyat_labels = [row[0] for row in cari_fiyatlar]
+        cari_fiyat_data = [float(row[1]) for row in cari_fiyatlar]
 
-    except Exception as e:
-        logger.error(f"Satıcı analiz hatası: {str(e)}")
-        flash(f"Hata oluştu: {str(e)}", 'danger')
+        return render_template('satici_analiz.html',
+                            satici_siparisler=satici_siparisler,
+                            hata_turleri=hata_turleri,
+                            gunluk_satislar=gunluk_satislar,
+                            satici_siparis_labels=satici_siparis_labels,
+                            satici_siparis_data=satici_siparis_data,
+                            gunluk_satis_labels=gunluk_satis_labels,
+                            gunluk_satis_data=gunluk_satis_data,
+                            aylik_satis_labels=aylik_satis_labels,
+                            aylik_satis_data=aylik_satis_data,
+                            cari_fiyat_labels=cari_fiyat_labels,
+                            cari_fiyat_data=cari_fiyat_data)
+    except mysql.connector.Error as err:
+        flash(f"Veritabanı hatası: {err}", 'danger')
         return render_template('satici_analiz.html', satici_siparisler=[], hata_turleri=[], gunluk_satislar=[],
-                               satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
-                               gunluk_satis_data=[])
+                            satici_siparis_labels=[], satici_siparis_data=[], gunluk_satis_labels=[],
+                            gunluk_satis_data=[], aylik_satis_labels=[], aylik_satis_data=[], cari_fiyat_labels=[], cari_fiyat_data=[])
     finally:
         close_db_connection(connection)
+
+        @app.route('/alicilar_analiz')
+        @login_required
+        def alicilar_analiz():
+            if current_user.rol != 'alici':
+                flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+                return redirect(url_for('index'))
+
+            connection = None
+            try:
+                connection = get_db_connection()
+                if not connection:
+                    flash('Veritabanı bağlantısı kurulamadı.', 'danger')
+                    return render_template('alicilar_analiz.html', siparisler=[], cari_fiyatlar=[])
+
+                cursor = connection.cursor()
+
+                # Alıcının siparişleri
+                cursor.execute("SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.sevkiyat_durum "
+                               "FROM siparisler s JOIN urunler u ON s.urun_id = u.urun_id "
+                               "WHERE s.kullanici_id = %s", (current_user.id,))
+                siparisler = cursor.fetchall()
+
+                # Cari fiyatlar (alıcıya bilgi olsun)
+                cursor.execute("SELECT urun_adi, cari_fiyat FROM urunler")
+                cari_fiyatlar = cursor.fetchall()
+                cari_fiyat_labels = [row[0] for row in cari_fiyatlar] if cari_fiyatlar else []
+                cari_fiyat_data = [float(row[1]) for row in cari_fiyatlar] if cari_fiyatlar else []
+
+                return render_template('alicilar_analiz.html',
+                                       siparisler=siparisler,
+                                       cari_fiyat_labels=cari_fiyat_labels,
+                                       cari_fiyat_data=cari_fiyat_data)
+            except mysql.connector.Error as err:
+                flash(f"Veritabanı hatası: {err}", 'danger')
+                return render_template('alicilar_analiz.html', siparisler=[], cari_fiyat_labels=[], cari_fiyat_data=[])
+            finally:
+                close_db_connection(connection)
+
+        @app.route('/odeme', methods=['GET', 'POST'])
+        @login_required
+        def odeme():
+            if current_user.rol != 'alici':
+                flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+                return redirect(url_for('index'))
+
+            if request.method == 'POST':
+                siparis_id = request.form.get('siparis_id')
+                tutar = request.form.get('tutar')
+                # Basit bir ödeme doğrulama (gerçek projede ödeme gateway eklenecek)
+                if siparis_id and tutar and float(tutar) > 0:
+                    connection = get_db_connection()
+                    cursor = connection.cursor()
+                    cursor.execute(
+                        "UPDATE siparisler SET durum = 'Ödendi', sevkiyat_durum = 'Gönderildi' WHERE siparis_id = %s AND kullanici_id = %s",
+                        (siparis_id, current_user.id))
+                    connection.commit()
+                    close_db_connection(connection)
+                    flash('Ödeme başarılı, sevkiyat işlemi başlatıldı!', 'success')
+                else:
+                    flash('Geçersiz ödeme bilgisi!', 'danger')
+                return redirect(url_for('alicilar_analiz'))
+
+            connection = get_db_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT siparis_id, urun_id, miktar FROM siparisler WHERE kullanici_id = %s AND durum = 'Onaylandı'",
+                (current_user.id,))
+            siparisler = cursor.fetchall()
+            close_db_connection(connection)
+            return render_template('odeme.html', siparisler=siparisler)
+
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080, use_reloader=False)
