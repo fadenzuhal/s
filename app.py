@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 # Flask uygulaması
 app = Flask(__name__, template_folder="templates")
 load_dotenv()
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '1234567890')
 
 # Flask-Login ayarları
 login_manager = LoginManager()

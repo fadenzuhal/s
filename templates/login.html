@@ -7,63 +7,166 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
     <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            background: #1e3b77; /* Varsayılan arka plan, resimler yüklenene kadar */
+        }
+
+        .slideshow-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .slideshow-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Resmi tam ekran kaplar, orantılı şekilde */
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+
+        .slideshow-image.active {
+            opacity: 1;
+        }
+
         .login-container {
             max-width: 400px;
-            margin: auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 48, 135, 0.1);
+            padding: 80px;
+            background: #f1ea73;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 78, 135, 0.1);
+            position: relative;
+            z-index: 1;
         }
+
         .btn-adopen {
-            background-color: #003087;
+            background-color: #1e3b77;
             color: white;
             border: 1px solid #003087;
-            transition: background-color 0.3s;
+            transition: transform 0.3s ease;
         }
+
         .btn-adopen:hover {
             background-color: #002266;
             border-color: #002266;
+            animation: mouse_haraket 0.3s ease forwards;
         }
+
+        .btn-secondary {
+            transition: transform 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            animation: mouse_haraket 0.3s ease forwards;
+        }
+
+        @keyframes mouse_haraket {
+            0% {
+                transform: scale(1);
+            }
+            100% {
+                transform: scale(1.1);
+            }
+        }
+
         .alert-adopen {
-            border-left: 4px solid #003087;
+            border-right: 4px solid #003087;
             background-color: #e0e7ff;
             color: #333;
+        }
+
+        .hakkimizda {
+            background-color: lightpink;
+            width: 500px;
+            padding: 20px;
+            border-radius: 10px;
+            position: relative;
+            z-index: 1;
         }
     </style>
 </head>
 <body>
+    <div class="slideshow-container">
+        <img src="{{ url_for('static', filename='adopen_resimler/ev1.jpg') }}" class="slideshow-image active">
+        <img src="{{ url_for('static', filename='adopen_resimler/ev2.jpg') }}" class="slideshow-image">
+        <img src="{{ url_for('static', filename='adopen_resimler/ev3.jpg') }}" class="slideshow-image">
+        <img src="{{ url_for('static', filename='adopen_resimler/ev4.jpg') }}" class="slideshow-image">
+    </div>
     <div class="container mt-5">
-        <div class="login-container">
-            <h1 class="text-center mb-4">Giriş Yap</h1>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="hakkimizda">
+                    <h1>Hakkımızda</h1>
+                    <p>Adopen, 1997 yılında Antalya’da kurulan, Türkiye’nin lider PVC pencere ve kapı üreticilerinden biridir.
+                        ADO Grup bünyesinde, yarım asırlık tecrübesiyle kaliteli, dayanıklı ve yenilikçi ürünler sunar.
+                        Antalya Organize Sanayi Bölgesi’ndeki modern tesislerimizde, uluslararası standartlarda üretim yaparak birçok ülkeye ihracat gerçekleştiriyoruz. Müşteri memnuniyeti ve sürdürülebilirlik ilkelerimizle, yaşam alanlarınızı daha konforlu ve estetik hale getirmeyi hedefliyoruz.</p>
+                    <h1>Adres</h1><p>Antalya</p>
+                    <h1>İletişim</h1>
+                    <p>55555555555</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="login-container">
+                    <h1 class="text-center mb-4">Giriş Yap</h1>
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST">
+                        {{ form.hidden_tag() }}
+                        <div class="mb-3">
+                            <label for="email" class="form-label">E-posta</label>
+                            {{ form.email(class="form-control", id="email", placeholder="E-posta adresinizi girin") }}
                         </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Şifre</label>
+                            {{ form.password(class="form-control", id="password", placeholder="Şifrenizi girin", type="password") }}
+                        </div>
+                        {{ form.submit(class="btn btn-adopen w-100") }}
+                    </form>
 
-            <form method="POST">
-                {{ form.hidden_tag() }}
-                <div class="mb-3">
-                    <label for="email" class="form-label">E-posta</label>
-                    {{ form.email(class="form-control", id="email", placeholder="E-posta adresinizi girin") }}
+                    <a href="{{ url_for('register') }}" class="btn btn-secondary mt-3 w-100">Kayıt Ol</a>
                 </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">Şifre</label>
-                    {{ form.password(class="form-control", id="password", placeholder="Şifrenizi girin", type="password") }}
-                </div>
-                {{ form.submit(class="btn btn-adopen w-100") }}
-            </form>
-
-            <a href="{{ url_for('register') }}" class="btn btn-secondary mt-3 w-100">Kayıt Ol</a>
+            </div>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const images = document.querySelectorAll('.slideshow-image');
+        let currentImageIndex = 0;
+
+        function changeImage() {
+            if (images.length === 0) {
+                console.error('No images found in slideshow-container');
+                return;
+            }
+            images[currentImageIndex].classList.remove('active');
+            currentImageIndex = (currentImageIndex + 1) % images.length;
+            images[currentImageIndex].classList.add('active');
+            console.log('Current image index:', currentImageIndex); // Hata ayıklamak için
+        }
+
+        // Her 5 saniyede bir resim değişir
+        setInterval(changeImage, 5000);
+    </script>
 </body>
 </html>
