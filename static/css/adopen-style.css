@@ -1,0 +1,48 @@
+/* static/css/adopen-style.css */
+body {
+    background-color: #f8f9fa;
+    font-family: 'Arial', sans-serif;
+}
+
+.btn-adopen {
+    background-color: #003087;
+    color: white;
+    border: 1px solid #003087;
+    transition: background-color 0.3s ease;
+}
+
+.btn-adopen:hover {
+    background-color: #002266;
+    border-color: #002266;
+    color: white;
+}
+
+.alert-adopen {
+    border-left: 4px solid #003087;
+    background-color: #e0e7ff;
+    color: #333;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: #f1f3f5;
+}
+
+.container {
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 48, 135, 0.1);
+}
+
+h1, h2 {
+    color: #003087;
+}
+
+a.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+a.btn-secondary:hover {
+    background-color: #dfc707;
+    color: white;
+}
