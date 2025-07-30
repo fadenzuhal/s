@@ -1,25 +1,106 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Satıcı Analiz</title>
+    <title>Satıcı Analiz - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
-        .chart-row { display: flex; gap: 10px; margin-bottom: 10px; }
-        .chart-container { flex: 1; }
-        .highlight-section { background-color: #f8f9fa; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1e3b77, #e0e7ff); /* Lacivertten açık maviye gradyan */
+            color: #333;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95); /* Hafif şeffaf beyaz arka plan */
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2);
+            max-width: 900px;
+            margin: 20px auto;
+        }
+
+        h1, h2, h3 {
+            color: #1e3b77; /* Lacivert başlık */
+        }
+
+        .highlight-section {
+            background-color: #f1ea73; /* Sarı arka plan */
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 78, 135, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .chart-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .chart-container {
+            flex: 1;
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .btn-adopen {
+            background-color: #f1ea73; /* Sarı buton */
+            color: #1e3b77;
+            border: 1px solid #1e3b77;
+            transition: transform 0.3s ease;
+        }
+
+        .btn-adopen:hover {
+            background-color: #e0d963; /* Hafif koyu sarı */
+            animation: mouse_haraket 0.3s ease forwards;
+        }
+
+        @keyframes mouse_haraket {
+            0% {
+                transform: scale(1);
+            }
+            100% {
+                transform: scale(1.1);
+            }
+        }
+
+        .alert-adopen {
+            border-left: 4px solid #1e3b77;
+            background-color: #e0e7ff; /* Açık mavi arka plan */
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .table {
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table thead {
+            background-color: #1e3b77;
+            color: #fff;
+        }
+
+        .table tbody tr:hover {
+            background-color: #ffcccb; /* Pembe hover efekti */
+        }
     </style>
 </head>
 <body>
-    <div class="container mt-3" style="max-width: 900px; padding: 10px;">
+    <div class="container mt-3">
         <h1 class="mb-4">Satıcı Analiz Paneli</h1>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert" style="margin: 5px 0;">
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
@@ -142,7 +223,7 @@
             <canvas id="cariFiyatChart" width="300" height="150"></canvas>
         {% endif %}
 
-        <a href="{{ url_for('logout') }}" class="btn btn-danger mt-2">Çıkış</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen mt-2">Çıkış</a>
     </div>
 
     <script>
@@ -155,8 +236,8 @@
                     datasets: [{
                         label: 'Toplam Miktar',
                         data: {{ en_cok_siparis_data|tojson }},
-                        backgroundColor: 'rgba(40, 167, 69, 0.7)',
-                        borderColor: 'rgba(40, 167, 69, 1)',
+                        backgroundColor: '#f1ea73', /* Sarı */
+                        borderColor: '#1e3b77', /* Lacivert */
                         borderWidth: 1
                     }]
                 },
@@ -177,8 +258,8 @@
                     datasets: [{
                         label: 'Toplam Miktar',
                         data: {{ satici_siparis_data|tojson }},
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: '#e0e7ff', /* Açık mavi */
+                        borderColor: '#1e3b77', /* Lacivert */
                         borderWidth: 1
                     }]
                 },
@@ -194,7 +275,7 @@
                     labels: {{ hata_turleri_labels|tojson }},
                     datasets: [{
                         data: {{ hata_turleri_data|tojson }},
-                        backgroundColor: ['#003087', '#0055a4', '#007bff', '#00aaff', '#80d4ff']
+                        backgroundColor: ['#1e3b77', '#f1ea73', '#e0e7ff', '#ffcccb', '#0055a4'] /* Adopen renk paleti */
                     }]
                 },
                 options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } } }
@@ -211,7 +292,7 @@
                         label: 'Sipariş',
                         data: {{ gunluk_satis_data|tojson }},
                         fill: false,
-                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderColor: '#f1ea73', /* Sarı */
                         tension: 0.1
                     }]
                 },
@@ -229,7 +310,7 @@
                         label: 'Sipariş',
                         data: {{ aylik_satis_data|tojson }},
                         fill: false,
-                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderColor: '#ffcccb', /* Pembe */
                         tension: 0.1
                     }]
                 },
@@ -246,8 +327,8 @@
                     datasets: [{
                         label: 'Cari Fiyat (TL)',
                         data: {{ cari_fiyat_data|tojson }},
-                        backgroundColor: 'rgba(153, 102, 255, 0.5)',
-                        borderColor: 'rgba(153, 102, 255, 1)',
+                        backgroundColor: '#ffcccb', /* Pembe */
+                        borderColor: '#1e3b77', /* Lacivert */
                         borderWidth: 1
                     }]
                 },

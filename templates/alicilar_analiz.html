@@ -3,19 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ana Sayfa</title>
+    <title>Adopen - Alıcı Profil ve Analiz</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            min-height: 100vh;
+            background: #e0e7ff; /* Açık mavi arka plan */
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95); /* Hafif şeffaf beyaz */
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2);
+            max-width: 1200px;
+        }
+
+        h1, h2 {
+            color: #1e3b77; /* Lacivert başlık */
+        }
+
+        .btn-adopen {
+            background-color: #f1ea73; /* Sarı buton */
+            color: #1e3b77;
+            border: 1px solid #1e3b77;
+            transition: transform 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn-adopen:hover {
+            background-color: #e0d963; /* Hafif koyu sarı */
+            animation: mouse_haraket 0.3s ease forwards;
+        }
+
+        .btn-primary, .btn-success, .btn-info, .btn-warning, .btn-danger, .btn-secondary {
+            transition: transform 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn-primary:hover, .btn-success:hover, .btn-info:hover, .btn-warning:hover, .btn-danger:hover, .btn-secondary:hover {
+            animation: mouse_haraket 0.3s ease forwards;
+        }
+
+        @keyframes mouse_haraket {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+
+        .alert-adopen {
+            border-left: 4px solid #1e3b77;
+            background-color: #e0e7ff;
+            color: #333;
+        }
+
+        .table {
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table thead {
+            background-color: #1e3b77;
+            color: #fff;
+        }
+
+        .table tbody tr:hover {
+            background-color: #ffcccb; /* Pembe hover efekti */
+        }
+
+        .table .btn-sm {
+            margin-right: 5px;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Hoş Geldiniz, {{ current_user.ad|default('Misafir') }}!</h1>
-        <p>Bu, hata raporlama ve sipariş yönetim sistemimizin ana sayfasıdır.</p>
+        <h1>Alıcı Profil ve Analiz</h1>
+        <p>Hoş geldiniz, {{ current_user.ad|default('Misafir') }}! Aşağıda profil bilgileriniz ve analizleriniz yer alıyor.</p>
 
         <!-- Flash Mesajları -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show mt-3">
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show mt-3">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -23,60 +100,126 @@
             {% endif %}
         {% endwith %}
 
+        <!-- Profil Bilgileri ve Güncelleme -->
+        <h2 class="mt-5">Profil Bilgileri</h2>
+        <div class="mb-4">
+            <p><strong>E-posta:</strong> {{ current_user.email }}</p>
+            <p><strong>Ad:</strong> {{ current_user.ad }}</p>
+            <p><strong>Bakiye:</strong> {{ bakiye }} TL</p>
+        </div>
+        <h3>Profil Güncelle</h3>
+        <form method="POST" action="{{ url_for('alicilar_analiz') }}">
+            <div class="mb-3">
+                <label for="ad" class="form-label">Adınız</label>
+                <input type="text" class="form-control" id="ad" name="ad" value="{{ current_user.ad }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="sifre" class="form-label">Yeni Şifre</label>
+                <input type="password" class="form-control" id="sifre" name="sifre" placeholder="Yeni şifrenizi girin" required>
+            </div>
+            <button type="submit" class="btn btn-adopen">Bilgileri Güncelle</button>
+        </form>
+
+        <!-- Navigasyon Butonları -->
         <div class="mt-4">
-            <a href="/hata_ekle" class="btn btn-primary">Hata Raporu Ekle</a>
-            <a href="/sepet_ekle" class="btn btn-success">Sepete Ürün Ekle</a>
-            <a href="/sepet" class="btn btn-info">Sepeti Görüntüle</a>
-            <a href="/siparisler" class="btn btn-warning">Siparişlerim</a>
-            {% if current_user.rol == 'alici' %}
-                <a href="/alicilar_analiz" class="btn btn-secondary">Alıcı Analiz</a>
-            {% elif current_user.rol == 'satici' %}
-                <a href="/satici_analiz" class="btn btn-secondary">Satıcı Analiz</a>
-            {% endif %}
-            <a href="/logout" class="btn btn-danger">Çıkış Yap</a>
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-adopen">Ana Sayfa</a>
+            <a href="{{ url_for('hata_ekle') }}" class="btn btn-primary btn-adopen">Hata Raporu Ekle</a>
+            <a href="{{ url_for('sepet') }}" class="btn btn-success btn-adopen">Sepete Ürün Ekle</a>
+            <a href="{{ url_for('sepet') }}" class="btn btn-info btn-adopen">Sepeti Görüntüle</a>
+            <a href="{{ url_for('siparisler') }}" class="btn btn-warning btn-adopen">Siparişlerim</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen">Çıkış Yap</a>
         </div>
 
-        <h2 class="mt-5">Hata Raporları</h2>
+        <!-- Siparişler -->
+        <h2 class="mt-5">Siparişler</h2>
+        <p><strong>Toplam Harcama:</strong> {{ toplam_harcama }} TL</p>
         <table class="table table-striped">
             <thead>
                 <tr>
-                    <th>Hata ID</th>
+                    <th>Sipariş ID</th>
                     <th>Ürün Adı</th>
-                    <th>Bayi Adı</th>
-                    <th>Alıcı Adı</th>
-                    <th>Satıcı Adı</th>
-                    <th>Hata Tarihi</th>
-                    <th>Hata Türü</th>
+                    <th>Miktar</th>
+                    <th>Sipariş Tarihi</th>
                     <th>Durum</th>
-                    <th>İşlemler</th>
+                    <th>Toplam Fiyat</th>
                 </tr>
             </thead>
             <tbody>
-                {% if hatalar %}
-                    {% for hata in hatalar %}
+                {% if siparisler %}
+                    {% for siparis in siparisler %}
                         <tr>
-                            <td>{{ hata.hata_id }}</td>
-                            <td>{{ hata.urun_adi }}</td>
-                            <td>{{ hata.bayi_adi }}</td>
-                            <td>{{ hata.alici_adi|default('Belirtilmemiş') }}</td>
-                            <td>{{ hata.satici_adi|default('Belirtilmemiş') }}</td>
-                            <td>{{ hata.hata_tarihi }}</td>
-                            <td>{{ hata.hata_turu }}</td>
-                            <td>{{ hata.durum }}</td>
-                            <td>
-                                <a href="{{ url_for('hata_duzenle', hata_id=hata.hata_id) }}" class="btn btn-sm btn-warning">Düzenle</a>
-                                <a href="{{ url_for('hata_sil', hata_id=hata.hata_id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Emin misiniz?');">Sil</a>
-                            </td>
+                            <td>{{ siparis.siparis_id }}</td>
+                            <td>{{ siparis.urun_adi }}</td>
+                            <td>{{ siparis.miktar }}</td>
+                            <td>{{ siparis.siparis_tarihi }}</td>
+                            <td>{{ siparis.durum }}</td>
+                            <td>{{ siparis.toplam_fiyat }} TL</td>
                         </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="9">Hata raporu bulunamadı.</td>
+                        <td colspan="6">Sipariş bulunamadı.</td>
                     </tr>
                 {% endif %}
             </tbody>
         </table>
+
+        <!-- En Çok Sipariş Edilen Ürünler -->
+        <h2 class="mt-5">En Çok Sipariş Edilen Ürünler</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Ürün Adı</th>
+                    <th>Toplam Miktar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if en_cok_siparis_urunler %}
+                    {% for urun in en_cok_siparis_urunler %}
+                        <tr>
+                            <td>{{ urun.urun_adi }}</td>
+                            <td>{{ urun.toplam_miktar }}</td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="2">Sipariş verisi bulunamadı.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+
+        <!-- Cari Fiyatlar Grafiği -->
+        <h2 class="mt-5">Ürünlerin Cari Fiyatları</h2>
+        <canvas id="cariFiyatChart" width="400" height="200"></canvas>
     </div>
+
+    <script>
+        const ctx = document.getElementById('cariFiyatChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: {{ cari_fiyat_labels|tojson }},
+                datasets: [{
+                    label: 'Cari Fiyat (TL)',
+                    data: {{ cari_fiyat_data|tojson }},
+                    backgroundColor: '#1e3b77',
+                    borderColor: '#f1ea73',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Ürünlerin Cari Fiyatları' }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

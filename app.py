@@ -1,9 +1,10 @@
+
 import mysql.connector
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
 from wtforms import StringField, SelectField, DateField, TextAreaField, IntegerField, SubmitField
-from wtforms.validators import DataRequired, Length, Optional, NumberRange
+from wtforms.validators import DataRequired, Length, Optional, NumberRange, Email
 from dotenv import load_dotenv
 import os
 import logging
@@ -113,46 +114,81 @@ class SepetForm(FlaskForm):
 
 # Login Formu
 class LoginForm(FlaskForm):
-    email = StringField('E-posta', validators=[DataRequired()])
+    email = StringField('E-posta', validators=[DataRequired(), Email()])
     password = StringField('Şifre', validators=[DataRequired()])
     submit = SubmitField('Giriş Yap')
+
+# İletişim Formu
+class ContactForm(FlaskForm):
+    ad = StringField('Ad', validators=[DataRequired(), Length(max=100)])
+    email = StringField('E-posta', validators=[DataRequired(), Email()])
+    mesaj = TextAreaField('Mesaj', validators=[DataRequired(), Length(max=1000)])
+    submit = SubmitField('Gönder')
 
 # Rotalar
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
-    form = LoginForm()
-    if form.validate_on_submit():
+    login_form = LoginForm()
+    contact_form = ContactForm()
+
+    # İletişim formu işleme
+    if contact_form.validate_on_submit():
+        connection = None
+        try:
+            connection = get_db_connection()
+            if not connection:
+                flash('Veritabanı bağlantısı kurulamadı.', 'danger')
+                logger.error("Veritabanı bağlantısı kurulamadı.")
+                return render_template('login.html', login_form=login_form, contact_form=contact_form)
+            cursor = connection.cursor()
+            cursor.execute("""
+                INSERT INTO iletisim_mesajlari (ad, email, mesaj, tarih)
+                VALUES (%s, %s, %s, %s)
+            """, (contact_form.ad.data, contact_form.email.data, contact_form.mesaj.data, datetime.now()))
+            connection.commit()
+            flash('Mesajınız başarıyla gönderildi!', 'success')
+            logger.debug(f"İletişim mesajı gönderildi: {contact_form.email.data}")
+            return redirect(url_for('login'))
+        except Exception as e:
+            connection.rollback()
+            logger.error(f"İletişim mesajı kaydetme hatası: {str(e)}")
+            flash(f"Mesaj gönderilirken hata oluştu: {str(e)}", 'danger')
+        finally:
+            close_db_connection(connection)
+
+    # Giriş formu işleme
+    if login_form.validate_on_submit():
         connection = None
         try:
             connection = get_db_connection()
             if not connection:
                 flash('Veritabanı bağlantısı kurulamadı. Lütfen daha sonra tekrar deneyin.', 'danger')
                 logger.error("Veritabanı bağlantısı kurulamadı.")
-                return render_template('login.html', form=form)
+                return render_template('login.html', login_form=login_form, contact_form=contact_form)
             cursor = connection.cursor()
-            cursor.execute("SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s", (form.email.data,))
+            cursor.execute("SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s", (login_form.email.data,))
             user = cursor.fetchone()
             if user:
-                if user[2] == form.password.data:  # Düz metin şifre kontrolü
+                if user[2] == login_form.password.data:  # Düz metin şifre kontrolü
                     user_obj = User(user[0], user[1], user[3], user[4])
                     login_user(user_obj)
                     flash('Giriş başarılı! Hoş geldiniz.', 'success')
-                    logger.debug(f"Giriş başarılı: {form.email.data}")
+                    logger.debug(f"Giriş başarılı: {login_form.email.data}")
                     return redirect(url_for('index'))
                 else:
                     flash('Geçersiz şifre. Lütfen tekrar deneyin.', 'danger')
-                    logger.warning(f"Geçersiz şifre denemesi: {form.email.data}")
+                    logger.warning(f"Geçersiz şifre denemesi: {login_form.email.data}")
             else:
                 flash('Bu e-posta adresi kayıtlı değil.', 'danger')
-                logger.warning(f"Kayıtsız e-posta denemesi: {form.email.data}")
+                logger.warning(f"Kayıtsız e-posta denemesi: {login_form.email.data}")
         except Exception as e:
             logger.error(f"Giriş hatası: {str(e)}")
             flash(f'Giriş sırasında hata oluştu: {str(e)}', 'danger')
         finally:
             close_db_connection(connection)
-    return render_template('login.html', form=form)
+    return render_template('login.html', login_form=login_form, contact_form=contact_form)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -196,6 +232,8 @@ def logout():
     flash('Çıkış yapıldı.', 'success')
     return redirect(url_for('login'))
 
+# ... (app.py'nin önceki içeriği aynı kalıyor, sadece index rotası güncelleniyor)
+
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -205,26 +243,28 @@ def index():
         connection = get_db_connection()
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
-            return render_template('index.html', hatalar=[])
+            return render_template('index.html', hatalar=[], odeme_gecmisi=[], bakiye=0.00)
 
         cursor = connection.cursor()
+
+        # Hata raporları
         cursor.execute("""
-                       SELECT h.hata_id,
-                              u.urun_adi,
-                              b.bayi_adi,
-                              a.ad AS alici_adi,
-                              s.ad AS satici_adi,
-                              h.hata_tarihi,
-                              h.hata_turu,
-                              h.durum
-                       FROM hatalar h
-                                JOIN urunler u ON h.urun_id = u.urun_id
-                                JOIN bayiler b ON h.bayi_id = b.bayi_id
-                                LEFT JOIN alicilar a ON h.alici_id = a.alici_id
-                                LEFT JOIN saticilar s ON h.satici_id = s.satici_id
-                       WHERE h.kullanici_id = %s
-                       ORDER BY h.hata_tarihi DESC
-                       """, (current_user.id,))
+            SELECT h.hata_id,
+                   u.urun_adi,
+                   b.bayi_adi,
+                   a.ad AS alici_adi,
+                   s.ad AS satici_adi,
+                   h.hata_tarihi,
+                   h.hata_turu,
+                   h.durum
+            FROM hatalar h
+            JOIN urunler u ON h.urun_id = u.urun_id
+            JOIN bayiler b ON h.bayi_id = b.bayi_id
+            LEFT JOIN alicilar a ON h.alici_id = a.alici_id
+            LEFT JOIN saticilar s ON h.satici_id = s.satici_id
+            WHERE h.kullanici_id = %s
+            ORDER BY h.hata_tarihi DESC
+        """, (current_user.id,))
         hatalar = [
             {
                 'hata_id': row[0],
@@ -239,20 +279,37 @@ def index():
             for row in cursor.fetchall()
         ]
 
-        # Bakiyeyi ekle (yalnızca alici için)
+        # Ödeme geçmişi
+        cursor.execute("""
+            SELECT islem, tarih FROM logs 
+            WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
+            ORDER BY tarih DESC
+        """, (current_user.id,))
+        odeme_gecmisi = [
+            {
+                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[1], (datetime, date)) else str(row[1]),
+                'islem': row[0],
+                'siparis_id': row[0].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[0] else '-',
+                'tutar': row[0].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row[0] else '-'
+            } for row in cursor.fetchall()
+        ]
+        logger.debug(f"Ödeme geçmişi (index): {odeme_gecmisi}, Kullanıcı ID: {current_user.id}")
+
+        # Bakiye
         bakiye = 0.00
         if current_user.rol == 'alici':
             cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
             bakiye_result = cursor.fetchone()
-            bakiye = bakiye_result[0] if bakiye_result else 0.00
+            bakiye = float(bakiye_result[0]) if bakiye_result else 0.00
+            logger.debug(f"Kullanıcı bakiyesi: {bakiye}")
 
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Index sayfası görüntülendi'))
         connection.commit()
-        return render_template('index.html', hatalar=hatalar, bakiye=bakiye)
+        return render_template('index.html', hatalar=hatalar, odeme_gecmisi=odeme_gecmisi, bakiye=bakiye)
     except Exception as e:
         logger.error(f"Index error: {str(e)}")
         flash(f'Hata: {str(e)}', 'danger')
-        return render_template('index.html', hatalar=[])
+        return render_template('index.html', hatalar=[], odeme_gecmisi=[], bakiye=0.00)
     finally:
         close_db_connection(connection)
 
@@ -649,7 +706,7 @@ def satici_analiz():
         cursor.execute("SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi "
                        "FROM siparisler GROUP BY DATE(siparis_tarihi) ORDER BY gun")
         gunluk_satislar = cursor.fetchall()
-        gunluk_satis_labels = [row[0] for row in gunluk_satislar] if gunluk_satislar else []  # strftime kaldırıldı, zaten string
+        gunluk_satis_labels = [row[0] for row in gunluk_satislar] if gunluk_satislar else []
         gunluk_satis_data = [row[1] for row in gunluk_satislar] if gunluk_satislar else []
 
         # Aylık satış trendleri
@@ -695,33 +752,95 @@ def satici_analiz():
     finally:
         close_db_connection(connection)
 
-@app.route('/alicilar_analiz')
+# ... (Önceki app.py içeriği aynı kalıyor, sadece alicilar_analiz rotası değişiyor)
+
+# ... (Önceki app.py içeriği aynı kalıyor, sadece alicilar_analiz rotası ve yeni form eklenecek)
+
+from wtforms import PasswordField  # Yeni import
+
+# Yeni Profil Güncelleme Formu
+class ProfilGuncelleForm(FlaskForm):
+    ad = StringField('Adınız', validators=[DataRequired(), Length(max=100)])
+    sifre = PasswordField('Yeni Şifre', validators=[DataRequired(), Length(min=6, max=100)])
+    submit = SubmitField('Bilgileri Güncelle')
+
+@app.route('/alicilar_analiz', methods=['GET', 'POST'])
 @login_required
 def alicilar_analiz():
     if current_user.rol != 'alici':
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
 
+    form = ProfilGuncelleForm()
     connection = None
     try:
         connection = get_db_connection()
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
-            return render_template('alicilar_analiz.html', siparisler=[], cari_fiyat_labels=[], cari_fiyat_data=[], bakiye=0.00)
+            return render_template('alicilar_analiz.html', form=form, siparisler=[], cari_fiyat_labels=[],
+                                   cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
 
         cursor = connection.cursor()
 
+        # Profil güncelleme
+        if form.validate_on_submit():
+            ad = form.ad.data
+            sifre = form.sifre.data
+            try:
+                cursor.execute("UPDATE kullanicilar SET ad = %s, sifre = %s WHERE kullanici_id = %s",
+                              (ad, sifre, current_user.id))
+                connection.commit()
+                cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)",
+                              (current_user.id, f'Profil güncellendi: Ad={ad}'))
+                connection.commit()
+                flash('Profil bilgileriniz başarıyla güncellendi!', 'success')
+                logger.debug(f"Profil güncellendi: Kullanıcı ID {current_user.id}, Ad {ad}")
+                return redirect(url_for('alicilar_analiz'))
+            except mysql.connector.Error as err:
+                connection.rollback()
+                flash(f"Profil güncelleme hatası: {err}", 'danger')
+                logger.error(f"Profil güncelleme hatası: {err}")
+
         # Alıcının siparişleri
-        cursor.execute("SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum "
-                     "FROM siparisler s JOIN urunler u ON s.urun_id = u.urun_id "
-                     "WHERE s.kullanici_id = %s AND s.durum = 'Onaylandı'", (current_user.id,))
-        siparisler = cursor.fetchall()
+        cursor.execute("""
+            SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, u.fiyat
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.urun_id
+            WHERE s.kullanici_id = %s AND s.durum = 'Onaylandı'
+            ORDER BY s.siparis_tarihi DESC
+        """, (current_user.id,))
+        siparisler = [
+            {
+                'siparis_id': row[0],
+                'urun_adi': row[1],
+                'miktar': row[2],
+                'siparis_tarihi': row[3].strftime('%Y-%m-%d') if isinstance(row[3], (date, datetime)) else str(row[3]),
+                'durum': row[4],
+                'toplam_fiyat': float(row[5]) * row[2]
+            }
+            for row in cursor.fetchall()
+        ]
         logger.debug(f"Siparişler: {siparisler}")
+
+        # Toplam harcama
+        toplam_harcama = sum(siparis['toplam_fiyat'] for siparis in siparisler)
+
+        # En çok sipariş edilen ürünler
+        cursor.execute("""
+            SELECT u.urun_adi, SUM(s.miktar) AS toplam_miktar
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.urun_id
+            WHERE s.kullanici_id = %s AND s.durum = 'Onaylandı'
+            GROUP BY u.urun_adi
+            ORDER BY toplam_miktar DESC
+            LIMIT 5
+        """, (current_user.id,))
+        en_cok_siparis_urunler = [{'urun_adi': row[0], 'toplam_miktar': row[1]} for row in cursor.fetchall()]
 
         # Alıcının bakiyesi
         cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
         bakiye_result = cursor.fetchone()
-        bakiye = bakiye_result[0] if bakiye_result else 0.00
+        bakiye = float(bakiye_result[0]) if bakiye_result else 0.00
         logger.debug(f"Kullanıcının bakiyesi: {bakiye}")
 
         # Cari fiyatlar
@@ -730,17 +849,57 @@ def alicilar_analiz():
         cari_fiyat_labels = [row[0] for row in cari_fiyatlar] if cari_fiyatlar else []
         cari_fiyat_data = [float(row[1]) for row in cari_fiyatlar] if cari_fiyatlar else []
 
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)",
+                      (current_user.id, 'Alıcı analiz görüntülendi'))
+        connection.commit()
+
         return render_template('alicilar_analiz.html',
-                            siparisler=siparisler,
-                            cari_fiyat_labels=cari_fiyat_labels,
-                            cari_fiyat_data=cari_fiyat_data,
-                            bakiye=bakiye)
+                              form=form,
+                              siparisler=siparisler,
+                              cari_fiyat_labels=cari_fiyat_labels,
+                              cari_fiyat_data=cari_fiyat_data,
+                              bakiye=bakiye,
+                              toplam_harcama=toplam_harcama,
+                              en_cok_siparis_urunler=en_cok_siparis_urunler)
     except mysql.connector.Error as err:
-        flash(f"Veritabanı hatası: {err}", 'danger')
         logger.error(f"Veritabanı hatası: {err}")
-        return render_template('alicilar_analiz.html', siparisler=[], cari_fiyat_labels=[], cari_fiyat_data=[], bakiye=0.00)
+        flash(f"Veritabanı hatası: {err}", 'danger')
+        return render_template('alicilar_analiz.html', form=form, siparisler=[], cari_fiyat_labels=[],
+                              cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
     finally:
         close_db_connection(connection)
+# ... (Önceki app.py içeriği aynı kalıyor, sadece odeme rotası ve yeni form eklenecek)
+
+from wtforms import HiddenField, FloatField  # Yeni import
+
+# Ödeme Formu
+class OdemeForm(FlaskForm):
+    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
+    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
+    submit = SubmitField('Ödeme Yap')
+
+# ... (Önceki app.py içeriği aynı kalıyor, sadece odeme rotası güncelleniyor)
+
+from wtforms import HiddenField, FloatField
+from decimal import Decimal  # DECIMAL(10,2) için
+from datetime import datetime
+
+# Ödeme Formu
+class OdemeForm(FlaskForm):
+    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
+    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
+    submit = SubmitField('Ödeme Yap')
+
+# ... (app.py'nin önceki içeriği aynı kalıyor, sadece odeme rotası güncelleniyor)
+
+from wtforms import HiddenField, FloatField
+from decimal import Decimal
+from datetime import datetime
+
+class OdemeForm(FlaskForm):
+    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
+    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
+    submit = SubmitField('Ödeme Yap')
 
 @app.route('/odeme', methods=['GET', 'POST'])
 @login_required
@@ -749,69 +908,174 @@ def odeme():
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
 
-    if request.method == 'POST':
-        siparis_id = request.form.get('siparis_id')
-        tutar = request.form.get('tutar')
-        logger.debug(f"Ödeme denemesi: Siparis ID={siparis_id}, Tutar={tutar}, Kullanici ID={current_user.id}")
-        if siparis_id and tutar and float(tutar) > 0:
-            connection = get_db_connection()
-            if not connection:
-                logger.error("Veritabanı bağlantısı kurulamadı.")
-                flash('Veritabanı bağlantısı başarısız.', 'danger')
-                return redirect(url_for('siparisler'))
-            cursor = connection.cursor()
-            try:
-                cursor.execute("SELECT urun_id, miktar FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
-                             (siparis_id, current_user.id))
-                siparis = cursor.fetchone()
-                logger.debug(f"Siparis verisi: {siparis}")
-                if siparis:
-                    urun_id, miktar = siparis
-                    cursor.execute("SELECT cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
-                    cari_fiyat = cursor.fetchone()
-                    if cari_fiyat:
-                        beklenen_tutar = float(cari_fiyat[0]) * miktar
-                        logger.debug(f"Beklenen tutar: {beklenen_tutar}, Girilen tutar: {tutar}")
-                        if abs(float(tutar) - beklenen_tutar) < 0.01:
-                            cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
-                            mevcut_bakiye = cursor.fetchone()
-                            if mevcut_bakiye:
-                                mevcut_bakiye = mevcut_bakiye[0]
-                                logger.debug(f"Mevcut bakiye: {mevcut_bakiye}")
-                                if mevcut_bakiye >= float(tutar):
-                                    yeni_bakiye = mevcut_bakiye - float(tutar)
-                                    logger.debug(f"Yeni bakiye: {yeni_bakiye}")
-                                    affected_rows = cursor.execute("UPDATE kullanicilar SET bakiye = %s WHERE kullanici_id = %s",
-                                                                (yeni_bakiye, current_user.id))
-                                    logger.debug(f"Etkilenen satır sayısı: {affected_rows}")
-                                    cursor.execute("UPDATE siparisler SET durum = 'Ödendi', sevkiyat_durum = 'Gönderildi' WHERE siparis_id = %s AND kullanici_id = %s",
-                                                 (siparis_id, current_user.id))
-                                    connection.commit()
-                                    cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, f'Ödeme yapıldı: Sipariş ID {siparis_id}'))
-                                    connection.commit()
-                                    logger.debug("Güncelleme başarılı, commit tamamlandı.")
-                                    flash(f'Ödeme başarılı! Kalan bakiye: {yeni_bakiye:.2f} TL, sevkiyat işlemi başlatıldı.', 'success')
-                                else:
-                                    flash(f'Yetersiz bakiye! Gerekli: {tutar} TL, Mevcut: {mevcut_bakiye} TL', 'danger')
-                            else:
-                                flash('Bakiye bilgisi alınamadı!', 'danger')
-                        else:
-                            flash(f'Ödenen tutar ({tutar} TL) cari fiyat ({beklenen_tutar} TL) ile uyuşmuyor!', 'danger')
-                    else:
-                        flash('Ürün fiyatı bulunamadı!', 'danger')
-                else:
-                    flash('Sipariş bulunamadı veya size ait değil!', 'danger')
-            except Exception as e:
-                connection.rollback()
-                logger.error(f"Ödeme hatası: {str(e)}")
-                flash(f'Ödeme sırasında hata oluştu: {str(e)}', 'danger')
-            finally:
-                close_db_connection(connection)
-        else:
-            flash('Geçersiz ödeme bilgisi!', 'danger')
-        return redirect(url_for('siparisler'))
+    form = OdemeForm()
+    connection = None
+    try:
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Veritabanı bağlantısı kurulamadı.")
+            flash('Veritabanı bağlantısı başarısız.', 'danger')
+            return redirect(url_for('siparisler'))
 
-    return redirect(url_for('siparisler'))
+        cursor = connection.cursor()
+
+        # Ödeme geçmişi
+        cursor.execute("""
+            SELECT islem, tarih FROM logs 
+            WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
+            ORDER BY tarih DESC
+        """, (current_user.id,))
+        odeme_gecmisi = [
+            {
+                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[1], (datetime, date)) else str(row[1]),
+                'islem': row[0],
+                'siparis_id': row[0].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[0] else '-',
+                'tutar': row[0].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row[0] else '-'
+            } for row in cursor.fetchall()
+        ]
+        logger.debug(f"Ödeme geçmişi: {odeme_gecmisi}, Kullanıcı ID: {current_user.id}")
+
+        # GET isteği
+        if request.method == 'GET':
+            siparis_id = request.args.get('siparis_id')
+            if not siparis_id:
+                flash('Sipariş ID belirtilmedi.', 'danger')
+                logger.error(f"Sipariş ID eksik: Kullanıcı ID={current_user.id}")
+                return redirect(url_for('siparisler'))
+
+            cursor.execute("SELECT urun_id, miktar, durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
+                          (siparis_id, current_user.id))
+            siparis = cursor.fetchone()
+            logger.debug(f"Sipariş verisi: {siparis}, Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
+            if not siparis:
+                flash('Sipariş bulunamadı veya size ait değil!', 'danger')
+                logger.error(f"Sipariş bulunamadı: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
+                return redirect(url_for('siparisler'))
+
+            urun_id, miktar, durum = siparis
+            if durum != 'Bekliyor':
+                flash(f'Sipariş zaten işlenmiş! Durum: {durum}', 'danger')
+                logger.warning(f"Sipariş zaten işlenmiş: Sipariş ID={siparis_id}, Durum={durum}")
+                return redirect(url_for('siparisler'))
+
+            cursor.execute("SELECT cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
+            cari_fiyat = cursor.fetchone()
+            if not cari_fiyat:
+                flash('Ürün fiyatı bulunamadı!', 'danger')
+                logger.error(f"Ürün fiyatı bulunamadı: Ürün ID={urun_id}")
+                return redirect(url_for('siparisler'))
+
+            beklenen_tutar = float(cari_fiyat[0]) * miktar
+            form.siparis_id.data = siparis_id
+            form.tutar.data = round(beklenen_tutar, 2)
+            logger.debug(f"Ödeme formu hazırlandı: Sipariş ID={siparis_id}, Tutar={beklenen_tutar}")
+
+            return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
+
+        # POST isteği
+        if form.validate_on_submit():
+            siparis_id = form.siparis_id.data
+            tutar = form.tutar.data
+            logger.debug(f"Ödeme denemesi: Sipariş ID={siparis_id}, Tutar={tutar}, Kullanıcı ID={current_user.id}")
+
+            # Kullanıcı kontrolü
+            cursor.execute("SELECT kullanici_id, email, bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
+            kullanici = cursor.fetchone()
+            if not kullanici:
+                flash('Kullanıcı bulunamadı! Lütfen tekrar giriş yapın.', 'danger')
+                logger.error(f"Kullanıcı bulunamadı: Kullanıcı ID={current_user.id}")
+                return redirect(url_for('siparisler'))
+            kullanici_id, email, mevcut_bakiye = kullanici
+            logger.debug(f"Kullanıcı doğrulandı: ID={kullanici_id}, Email={email}, Bakiye={mevcut_bakiye}")
+
+            # Sipariş kontrolü
+            cursor.execute("SELECT urun_id, miktar, durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
+                          (siparis_id, current_user.id))
+            siparis = cursor.fetchone()
+            if not siparis:
+                flash('Sipariş bulunamadı veya size ait değil!', 'danger')
+                logger.error(f"Sipariş bulunamadı: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
+                return redirect(url_for('siparisler'))
+            urun_id, miktar, durum = siparis
+            if durum != 'Bekliyor':
+                flash(f'Sipariş zaten işlenmiş! Durum: {durum}', 'danger')
+                logger.warning(f"Sipariş zaten işlenmiş: Sipariş ID={siparis_id}, Durum={durum}")
+                return redirect(url_for('siparisler'))
+
+            # Ürün fiyat kontrolü
+            cursor.execute("SELECT cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
+            cari_fiyat = cursor.fetchone()
+            if not cari_fiyat:
+                flash('Ürün fiyatı bulunamadı!', 'danger')
+                logger.error(f"Ürün fiyatı bulunamadı: Ürün ID={urun_id}")
+                return redirect(url_for('siparisler'))
+
+            beklenen_tutar = float(cari_fiyat[0]) * miktar
+            if abs(float(tutar) - beklenen_tutar) > 0.01:
+                flash(f'Ödenen tutar ({tutar} TL) cari fiyat ({beklenen_tutar} TL) ile uyuşmuyor!', 'danger')
+                logger.error(f"Tutar uyuşmazlığı: Ödenen={tutar}, Beklenen={beklenen_tutar}")
+                return redirect(url_for('siparisler'))
+
+            if mevcut_bakiye < float(tutar):
+                flash(f'Yetersiz bakiye! Gerekli: {tutar} TL, Mevcut: {mevcut_bakiye} TL', 'danger')
+                logger.warning(f"Yetersiz bakiye: Gerekli={tutar}, Mevcut={mevcut_bakiye}")
+                return redirect(url_for('siparisler'))
+
+            # Bakiye güncelleme
+            yeni_bakiye = Decimal(str(mevcut_bakiye - float(tutar))).quantize(Decimal('0.01'))
+            logger.debug(f"Yeni bakiye hesaplandı: {yeni_bakiye}, Tür: {type(yeni_bakiye)}")
+            cursor.execute("UPDATE kullanicilar SET bakiye = %s WHERE kullanici_id = %s",
+                          (float(yeni_bakiye), str(current_user.id)))  # ID'yi str'ye çevir
+            affected_rows = cursor.rowcount
+            logger.debug(f"Bakiye güncelleme: Etkilenen satır sayısı={affected_rows}, Sorgu: UPDATE kullanicilar SET bakiye={float(yeni_bakiye)} WHERE kullanici_id={current_user.id}")
+
+            if affected_rows == 0:
+                # Ek kontrol: Kullanıcı var mı?
+                cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE kullanici_id = %s", (str(current_user.id),))
+                if not cursor.fetchone():
+                    connection.rollback()
+                    flash('Kullanıcı veritabanında bulunamadı!', 'danger')
+                    logger.error(f"Kullanıcı veritabanında yok: Kullanıcı ID={current_user.id}")
+                    return redirect(url_for('siparisler'))
+                connection.rollback()
+                flash('Bakiye güncelleme başarısız! Veritabanı hatası.', 'danger')
+                logger.error(f"Bakiye güncelleme başarısız: Kullanıcı ID={current_user.id}, Sorgu: UPDATE kullanicilar SET bakiye={float(yeni_bakiye)} WHERE kullanici_id={current_user.id}")
+                return redirect(url_for('siparisler'))
+
+            # Sipariş durumu güncelleme
+            cursor.execute("UPDATE siparisler SET durum = 'Ödendi', sevkiyat_durum = 'Gönderildi' WHERE siparis_id = %s AND kullanici_id = %s",
+                          (siparis_id, str(current_user.id)))
+            affected_rows_siparis = cursor.rowcount
+            logger.debug(f"Sipariş güncelleme: Etkilenen satır sayısı={affected_rows_siparis}")
+
+            if affected_rows_siparis == 0:
+                connection.rollback()
+                flash('Sipariş durumu güncelleme başarısız! Lütfen tekrar deneyin.', 'danger')
+                logger.error(f"Sipariş durumu güncelleme başarısız: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
+                return redirect(url_for('siparisler'))
+
+            # Log ekleme
+            cursor.execute("INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                          (str(current_user.id), f'Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {tutar:.2f} TL', datetime.now()))
+            connection.commit()
+            logger.debug(f"Ödeme başarılı: Sipariş ID={siparis_id}, Tutar={tutar:.2f}, Yeni bakiye={yeni_bakiye}")
+            flash(f'Ödeme başarılı! Kalan bakiye: {yeni_bakiye:.2f} TL, sevkiyat işlemi başlatıldı.', 'success')
+            return redirect(url_for('siparisler'))
+
+    except mysql.connector.Error as err:
+        if connection:
+            connection.rollback()
+        logger.error(f"Veritabanı hatası: {err}")
+        flash(f'Ödeme sırasında veritabanı hatası: {err}', 'danger')
+        return redirect(url_for('siparisler'))
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        logger.error(f"Genel hata: {e}")
+        flash(f'Ödeme sırasında hata oluştu: {e}', 'danger')
+        return redirect(url_for('siparisler'))
+    finally:
+        close_db_connection(connection)
 
 @app.route('/urunler')
 @login_required
@@ -842,6 +1106,7 @@ def urunler():
         return render_template('urunler.html', urunler=[])
     finally:
         close_db_connection(connection)
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=8080, use_reloader=False)

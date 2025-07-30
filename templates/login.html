@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -40,14 +41,19 @@
             opacity: 1;
         }
 
-        .login-container {
+        .login-container, .contact-container, .hakkimizda {
             max-width: 400px;
-            padding: 80px;
+            padding: 40px;
             background: #f1ea73;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0, 78, 135, 0.1);
             position: relative;
             z-index: 1;
+            margin-bottom: 20px;
+        }
+
+        .hakkimizda {
+            width: 500px;
         }
 
         .btn-adopen {
@@ -55,6 +61,7 @@
             color: white;
             border: 1px solid #003087;
             transition: transform 0.3s ease;
+            width: 100%;
         }
 
         .btn-adopen:hover {
@@ -65,6 +72,7 @@
 
         .btn-secondary {
             transition: transform 0.3s ease;
+            width: 100%;
         }
 
         .btn-secondary:hover {
@@ -85,15 +93,6 @@
             background-color: #e0e7ff;
             color: #333;
         }
-
-        .hakkimizda {
-            background-color: lightpink;
-            width: 500px;
-            padding: 20px;
-            border-radius: 10px;
-            position: relative;
-            z-index: 1;
-        }
     </style>
 </head>
 <body>
@@ -105,18 +104,18 @@
     </div>
     <div class="container mt-5">
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="hakkimizda">
                     <h1>Hakkımızda</h1>
                     <p>Adopen, 1997 yılında Antalya’da kurulan, Türkiye’nin lider PVC pencere ve kapı üreticilerinden biridir.
                         ADO Grup bünyesinde, yarım asırlık tecrübesiyle kaliteli, dayanıklı ve yenilikçi ürünler sunar.
-                        Antalya Organize Sanayi Bölgesi’ndeki modern tesislerimizde, uluslararası standartlarda üretim yaparak birçok ülkeye ihracat gerçekleştiriyoruz. Müşteri memnuniyeti ve sürdürülebilirlik ilkelerimizle, yaşam alanlarınızı daha konforlu ve estetik hale getirmeyi hedefliyoruz.</p>
-                    <h1>Adres</h1><p>Antalya</p>
-                    <h1>İletişim</h1>
-                    <p>55555555555</p>
+                        Antalya Organize Sanayi Bölgesi’ndeki modern tesislerimizde, uluslararası standartlarda üretim yaparak 80’den fazla ülkeye ihracat gerçekleştiriyoruz.
+                        Müşteri memnuniyeti ve sürdürülebilirlik ilkelerimizle, yaşam alanlarınızı daha konforlu ve estetik hale getirmeyi hedefliyoruz.</p>
+                    <h1>Adres</h1> <p>Antalya</p>
+                    <h1>İletişim</h1> <p>5555555555</p>
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="login-container">
                     <h1 class="text-center mb-4">Giriş Yap</h1>
 
@@ -131,20 +130,41 @@
                         {% endif %}
                     {% endwith %}
 
-                    <form method="POST">
-                        {{ form.hidden_tag() }}
+                    <form method="POST" action="{{ url_for('login') }}">
+                        {{ login_form.hidden_tag() }}
                         <div class="mb-3">
                             <label for="email" class="form-label">E-posta</label>
-                            {{ form.email(class="form-control", id="email", placeholder="E-posta adresinizi girin") }}
+                            {{ login_form.email(class="form-control", id="email", placeholder="E-posta adresinizi girin") }}
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">Şifre</label>
-                            {{ form.password(class="form-control", id="password", placeholder="Şifrenizi girin", type="password") }}
+                            {{ login_form.password(class="form-control", id="password", placeholder="Şifrenizi girin", type="password") }}
                         </div>
-                        {{ form.submit(class="btn btn-adopen w-100") }}
+                        {{ login_form.submit(class="btn btn-adopen") }}
                     </form>
 
-                    <a href="{{ url_for('register') }}" class="btn btn-secondary mt-3 w-100">Kayıt Ol</a>
+                    <a href="{{ url_for('register') }}" class="btn btn-secondary mt-3">Kayıt Ol</a>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="contact-container">
+                    <h1 class="text-center mb-4">İletişim</h1>
+                    <form method="POST" action="{{ url_for('login') }}">
+                        {{ contact_form.hidden_tag() }}
+                        <div class="mb-3">
+                            <label for="contact_ad" class="form-label">Ad</label>
+                            {{ contact_form.ad(class="form-control", id="contact_ad", placeholder="Adınızı girin") }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="contact_email" class="form-label">E-posta</label>
+                            {{ contact_form.email(class="form-control", id="contact_email", placeholder="E-posta adresinizi girin") }}
+                        </div>
+                        <div class="mb-3">
+                            <label for="contact_mesaj" class="form-label">Mesaj</label>
+                            {{ contact_form.mesaj(class="form-control", id="contact_mesaj", placeholder="Mesajınızı yazın", rows=4) }}
+                        </div>
+                        {{ contact_form.submit(class="btn btn-adopen") }}
+                    </form>
                 </div>
             </div>
         </div>

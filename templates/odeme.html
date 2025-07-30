@@ -2,24 +2,83 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Ödeme</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ödeme</title>
+    <title>Adopen - Ödeme Yap</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <style>
+        body {
+            min-height: 100vh;
+            background: #e0e7ff; /* Açık mavi arka plan */
+            color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+        }
 
+        .container {
+            background: rgba(255, 255, 255, 0.95); /* Hafif şeffaf beyaz */
+            border-radius: 10px;
+            padding: 40px;
+            box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2);
+            max-width: 800px;
+        }
+
+        h1, h2 {
+            color: #1e3b77; /* Lacivert başlık */
+        }
+
+        .btn-adopen {
+            background-color: #f1ea73; /* Sarı buton */
+            color: #1e3b77;
+            border: 1px solid #1e3b77;
+            transition: transform 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn-adopen:hover {
+            background-color: #e0d963; /* Hafif koyu sarı */
+            animation: mouse_haraket 0.3s ease forwards;
+        }
+
+        @keyframes mouse_haraket {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+
+        .alert-adopen {
+            border-left: 4px solid #1e3b77;
+            background-color: #e0e7ff;
+            color: #333;
+        }
+
+        .table {
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .table thead {
+            background-color: #1e3b77;
+            color: #fff;
+        }
+
+        .table tbody tr:hover {
+            background-color: #ffcccb; /* Pembe hover efekti */
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-3">
         <h1>Ödeme Yap</h1>
+        <p>Sipariş ödemenizi tamamlayın.</p>
+
+        <!-- Flash Mesajları -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -27,18 +86,64 @@
             {% endif %}
         {% endwith %}
 
-        <form method="POST">
+        <!-- Ödeme Formu -->
+        <h2 class="mt-4">Ödeme Bilgileri</h2>
+        <form method="POST" action="{{ url_for('odeme') }}">
+            {{ form.hidden_tag() }}
             <div class="mb-3">
-                <label class="form-label">Sipariş ID</label>
-                <input type="text" class="form-control" name="siparis_id" value="{{ request.args.get('siparis_id') }}" readonly>
+                <label for="siparis_id" class="form-label">Sipariş ID</label>
+                {{ form.siparis_id(class="form-control", readonly=True) }}
             </div>
             <div class="mb-3">
-                <label class="form-label">Tutar (TL)</label>
-                <input type="number" class="form-control" name="tutar" step="0.01" required placeholder="Beklenen tutarı girin">
+                <label for="tutar" class="form-label">Tutar (TL)</label>
+                {{ form.tutar(class="form-control", readonly=True) }}
             </div>
-            <button type="submit" class="btn btn-primary">Ödeme Yap</button>
+            {{ form.submit(class="btn btn-adopen") }}
         </form>
-        <a href="{{ url_for('alicilar_analiz') }}" class="btn btn-secondary mt-2">Geri Dön</a>
+        <a href="{{ url_for('siparisler') }}" class="btn btn-secondary btn-adopen mt-2">Geri Dön</a>
+
+        <!-- Ödeme Geçmişi Tablosu -->
+        <h2 class="mt-5">Ödeme Geçmişi</h2>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Tarih</th>
+                    <th>Sipariş ID</th>
+                    <th>Tutar (TL)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if odeme_gecmisi %}
+                    {% for odeme in odeme_gecmisi %}
+                        {% set islem_parts = odeme.islem.split('Sipariş ID ') %}
+                        {% if islem_parts|length > 1 %}
+                            {% set id_tutar = islem_parts[1].split(', Tutar ') %}
+                            {% if id_tutar|length > 1 %}
+                                <tr>
+                                    <td>{{ odeme.tarih }}</td>
+                                    <td>{{ id_tutar[0] }}</td>
+                                    <td>{{ id_tutar[1].split(' TL')[0] }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td>{{ odeme.tarih }}</td>
+                                    <td colspan="2">Geçersiz işlem formatı: {{ odeme.islem }}</td>
+                                </tr>
+                            {% endif %}
+                        {% else %}
+                            <tr>
+                                <td>{{ odeme.tarih }}</td>
+                                <td colspan="2">Geçersiz işlem formatı: {{ odeme.islem }}</td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="3">Ödeme geçmişi bulunamadı.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
