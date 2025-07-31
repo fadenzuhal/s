@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,173 +15,97 @@
             justify-content: center;
             font-family: Arial, sans-serif;
         }
-
         .container {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 10px;
             padding: 40px;
-            box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 48, 135, 0.1);
             max-width: 1200px;
         }
-
-        h1, h2 {
-            color: #1e3b77;
-        }
-
-        .btn-adopen {
-            background-color: #f1ea73;
-            color: #1e3b77;
-            border: 1px solid #1e3b77;
-            transition: transform 0.3s ease;
-            margin-right: 10px;
-        }
-
-        .btn-adopen:hover {
-            background-color: #e0d963;
-            animation: mouse_haraket 0.3s ease forwards;
-        }
-
-        .btn-primary, .btn-success, .btn-info, .btn-warning, .btn-danger, .btn-secondary {
-            transition: transform 0.3s ease;
-            margin-right: 10px;
-        }
-
-        .btn-primary:hover, .btn-success:hover, .btn-info:hover, .btn-warning:hover, .btn-danger:hover, .btn-secondary:hover {
-            animation: mouse_haraket 0.3s ease forwards;
-        }
-
-        @keyframes mouse_haraket {
-            0% { transform: scale(1); }
-            100% { transform: scale(1.1); }
-        }
-
-        .alert-adopen {
-            border-left: 4px solid #1e3b77;
-            background-color: #e0e7ff;
-            color: #333;
-        }
-
-        .table {
-            background: #fff;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .table thead {
-            background-color: #1e3b77;
-            color: #fff;
-        }
-
-        .table tbody tr:hover {
-            background-color: #ffcccb;
-        }
-
-        .table .btn-sm {
-            margin-right: 5px;
-        }
+        h1, h2 { color: #003087; }
+        .btn-adopen { background-color: #f1ea73; color: #1e3b77; border: 1px solid #1e3b77; transition: transform 0.3s ease; margin-right: 10px; }
+        .btn-adopen:hover { background-color: #e0d963; animation: mouse_haraket 0.3s ease forwards; }
+        .btn-primary:hover, .btn-success:hover, .btn-info:hover, .btn-warning:hover, .btn-danger:hover, .btn-secondary:hover { animation: mouse_haraket 0.3s ease forwards; }
+        @keyframes mouse_haraket { 0% { transform: scale(1); } 100% { transform: scale(1.1); } }
+        .alert-adopen { border-left: 4px solid #1e3b77; background-color: #e0e7ff; color: #333; }
+        .table { background: #fff; border-radius: 8px; overflow: hidden; }
+        .table thead { background-color: #1e3b77; color: #fff; }
+        .table tbody tr:hover { background-color: #ffcccb; }
+        .table .btn-sm { margin-right: 5px; }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <h1>Hoş Geldiniz, {{ current_user.ad|default('Misafir') }}!</h1>
-        <p>Bu, hata raporlama ve sipariş yönetim sistemimizin ana sayfasıdır.</p>
-        {% if current_user.rol == 'alici' %}
-            <p><strong>Bakiyeniz:</strong> {{ bakiye|round(2) }} TL</p>
+<div class="container mt-5">
+    <h1>Hoş Geldiniz, {{ current_user.ad|default('Misafir') }}!</h1>
+    <p>Bu, hata raporlama ve sipariş yönetim sistemimizin ana sayfasıdır.</p>
+    {% if current_user.rol == 'alici' %}
+        <p><strong>Bakiyeniz:</strong> {{ bakiye|round(2) }} TL</p>
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show mt-3">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
         {% endif %}
-
-        <!-- Flash Mesajları -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show mt-3">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <div class="mt-4">
-            <a href="{{ url_for('hata_ekle') }}" class="btn btn-primary btn-adopen">Hata Raporu Ekle</a>
-            <a href="{{ url_for('sepet_ekle') }}" class="btn btn-success btn-adopen">Sepete Ürün Ekle</a>
-            <a href="{{ url_for('sepet') }}" class="btn btn-info btn-adopen">Sepeti Görüntüle</a>
-            <a href="{{ url_for('siparisler') }}" class="btn btn-warning btn-adopen">Siparişlerim</a>
-            <a href="{{ url_for('urunler') }}" class="btn btn-primary btn-adopen">Ürünler</a>
-            {% if current_user.rol == 'alici' %}
-                <a href="{{ url_for('alicilar_analiz') }}" class="btn btn-secondary btn-adopen">Alıcı Analiz</a>
-            {% elif current_user.rol == 'satici' %}
-                <a href="{{ url_for('satici_analiz') }}" class="btn btn-secondary btn-adopen">Satıcı Analiz</a>
-            {% endif %}
-            <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen">Çıkış Yap</a>
-        </div>
-
-        <h2 class="mt-5">Hata Raporları</h2>
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Hata ID</th>
-                    <th>Ürün Adı</th>
-                    <th>Bayi Adı</th>
-                    <th>Alıcı Adı</th>
-                    <th>Satıcı Adı</th>
-                    <th>Hata Tarihi</th>
-                    <th>Hata Türü</th>
-                    <th>Durum</th>
-                    <th>İşlemler</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if hatalar %}
-                    {% for hata in hatalar %}
-                        <tr>
-                            <td>{{ hata.hata_id }}</td>
-                            <td>{{ hata.urun_adi }}</td>
-                            <td>{{ hata.bayi_adi }}</td>
-                            <td>{{ hata.alici_adi|default('Belirtilmemiş') }}</td>
-                            <td>{{ hata.satici_adi|default('Belirtilmemiş') }}</td>
-                            <td>{{ hata.hata_tarihi }}</td>
-                            <td>{{ hata.hata_turu }}</td>
-                            <td>{{ hata.durum }}</td>
-                            <td>
-                                <a href="{{ url_for('hata_duzenle', hata_id=hata.hata_id) }}" class="btn btn-sm btn-warning">Düzenle</a>
-                                <a href="{{ url_for('hata_sil', hata_id=hata.hata_id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Emin misiniz?');">Sil</a>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="9">Hata raporu bulunamadı.</td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-
-        <h2 class="mt-5">Ödeme Geçmişi Özeti</h2>
-        <table class="table table-striped">
-            <thead>
-                <tr>
-                    <th>Tarih</th>
-                    <th>Sipariş ID</th>
-                    <th>Tutar (TL)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if odeme_gecmisi %}
-                    {% for odeme in odeme_gecmisi %}
-                        <tr>
-                            <td>{{ odeme.tarih }}</td>
-                            <td>{{ odeme.siparis_id }}</td>
-                            <td>{{ odeme.tutar }}</td>
-                        </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="3">Ödeme geçmişi bulunamadı.</td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
+    {% endwith %}
+    <div class="mt-4">
+        <a href="{{ url_for('hata_ekle') }}" class="btn btn-primary btn-adopen">Hata Raporu Ekle</a>
+        <a href="{{ url_for('sepet_ekle') }}" class="btn btn-success btn-adopen">Sepete Ürün Ekle</a>
+        <a href="{{ url_for('sepet') }}" class="btn btn-info btn-adopen">Sepeti Görüntüle</a>
+        <a href="{{ url_for('siparisler') }}" class="btn btn-warning btn-adopen">Siparişlerim</a>
+        <a href="{{ url_for('urunler') }}" class="btn btn-primary btn-adopen">Ürünler</a>
+        {% if current_user.rol == 'alici' %}
+            <a href="{{ url_for('alicilar_analiz') }}" class="btn btn-secondary btn-adopen">Alıcı Analiz</a>
+        {% elif current_user.rol == 'satici' %}
+            <a href="{{ url_for('satici_analiz') }}" class="btn btn-secondary btn-adopen">Satıcı Analiz</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen">Çıkış Yap</a>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <h2 class="mt-5">Hata Raporları</h2>
+    <table class="table table-striped">
+        <thead><tr><th>Hata ID</th><th>Ürün Adı</th><th>Bayi Adı</th><th>Alıcı Adı</th><th>Satıcı Adı</th><th>Hata Tarihi</th><th>Hata Türü</th><th>Durum</th><th>İşlemler</th></tr></thead>
+        <tbody>
+        {% if hatalar %}
+            {% for hata in hatalar %}
+                <tr>
+                    <td>{{ hata.hata_id }}</td>
+                    <td>{{ hata.urun_adi }}</td>
+                    <td>{{ hata.bayi_adi }}</td>
+                    <td>{{ hata.alici_adi }}</td>
+                    <td>{{ hata.satici_adi }}</td>
+                    <td>{{ hata.hata_tarihi }}</td>
+                    <td>{{ hata.hata_turu }}</td>
+                    <td>{{ hata.durum }}</td>
+                    <td>
+                        <a href="{{ url_for('hata_duzenle', hata_id=hata.hata_id) }}" class="btn btn-sm btn-warning">Düzenle</a>
+                        <a href="{{ url_for('hata_sil', hata_id=hata.hata_id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Emin misiniz?');">Sil</a>
+                    </td>
+                </tr>
+            {% endfor %}
+        {% else %}
+            <tr><td colspan="9">Hata raporu bulunamadı.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+    <h2 class="mt-5">Ödeme Geçmişi Özeti</h2>
+    <table class="table table-striped">
+        <thead><tr><th>Tarih</th><th>Sipariş ID</th><th>Tutar (TL)</th></tr></thead>
+        <tbody>
+        {% if odeme_gecmisi %}
+            {% for odeme in odeme_gecmisi %}
+                <tr>
+                    <td>{{ odeme.tarih }}</td>
+                    <td>{{ odeme.siparis_id }}</td>
+                    <td>{{ odeme.tutar }}</td>
+                </tr>
+            {% endfor %}
+        {% else %}
+            <tr><td colspan="3">Ödeme geçmişi bulunamadı.</td></tr>
+        {% endif %}
+        </tbody>
+    </table>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

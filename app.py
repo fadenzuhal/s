@@ -1,14 +1,14 @@
-
 import mysql.connector
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
-from wtforms import StringField, SelectField, DateField, TextAreaField, IntegerField, SubmitField
+from wtforms import StringField, SelectField, DateField, TextAreaField, IntegerField, SubmitField, PasswordField, HiddenField, FloatField
 from wtforms.validators import DataRequired, Length, Optional, NumberRange, Email
 from dotenv import load_dotenv
 import os
 import logging
 from datetime import datetime, date
+from decimal import Decimal
 
 from config.db_config import close_db_connection, get_db_connection
 
@@ -78,7 +78,7 @@ def get_dropdown_choices():
     finally:
         close_db_connection(connection)
 
-# Hata formu
+# Formlar
 class HataForm(FlaskForm):
     urun_adi = SelectField('Ürün Adı', validators=[DataRequired()], coerce=str)
     bayi_adi = SelectField('Bayi Adı', validators=[DataRequired()], coerce=str)
@@ -87,8 +87,7 @@ class HataForm(FlaskForm):
     hata_tarihi = DateField('Hata Tarihi', validators=[DataRequired()], default=datetime.now)
     hata_turu = StringField('Hata Türü', validators=[DataRequired(), Length(max=100)])
     aciklama = TextAreaField('Açıklama', validators=[Optional(), Length(max=1000)])
-    durum = SelectField('Durum', choices=[('Açık', 'Açık'), ('Kapalı', 'Kapalı'), ('Devam Ediyor', 'Devam Ediyor'),
-                                          ('Çözüldü', 'Çözüldü')], validators=[DataRequired()])
+    durum = SelectField('Durum', choices=[('Açık', 'Açık'), ('Kapalı', 'Kapalı'), ('Devam Ediyor', 'Devam Ediyor'), ('Çözüldü', 'Çözüldü')], validators=[DataRequired()])
     submit = SubmitField('Ekle')
 
     def __init__(self, *args, **kwargs):
@@ -99,7 +98,6 @@ class HataForm(FlaskForm):
         self.alici_adi.choices = [('', 'Seçiniz')] + (alicilar or [])
         self.satici_adi.choices = [('', 'Seçiniz')] + (saticilar or [])
 
-# Sepet formu
 class SepetForm(FlaskForm):
     urun_adi = SelectField('Ürün Adı', validators=[DataRequired()], coerce=str)
     miktar = IntegerField('Miktar', validators=[DataRequired(), NumberRange(min=1)])
@@ -112,18 +110,26 @@ class SepetForm(FlaskForm):
         self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
         self.satici_adi.choices = saticilar or [('0', 'Satıcı bulunamadı')]
 
-# Login Formu
 class LoginForm(FlaskForm):
     email = StringField('E-posta', validators=[DataRequired(), Email()])
     password = StringField('Şifre', validators=[DataRequired()])
     submit = SubmitField('Giriş Yap')
 
-# İletişim Formu
 class ContactForm(FlaskForm):
     ad = StringField('Ad', validators=[DataRequired(), Length(max=100)])
     email = StringField('E-posta', validators=[DataRequired(), Email()])
     mesaj = TextAreaField('Mesaj', validators=[DataRequired(), Length(max=1000)])
     submit = SubmitField('Gönder')
+
+class ProfilGuncelleForm(FlaskForm):
+    ad = StringField('Adınız', validators=[DataRequired(), Length(max=100)])
+    sifre = PasswordField('Yeni Şifre', validators=[DataRequired(), Length(min=6, max=100)])
+    submit = SubmitField('Bilgileri Güncelle')
+
+class OdemeForm(FlaskForm):
+    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
+    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
+    submit = SubmitField('Ödeme Yap')
 
 # Rotalar
 @app.route('/login', methods=['GET', 'POST'])
@@ -133,7 +139,6 @@ def login():
     login_form = LoginForm()
     contact_form = ContactForm()
 
-    # İletişim formu işleme
     if contact_form.validate_on_submit():
         connection = None
         try:
@@ -158,7 +163,6 @@ def login():
         finally:
             close_db_connection(connection)
 
-    # Giriş formu işleme
     if login_form.validate_on_submit():
         connection = None
         try:
@@ -170,19 +174,15 @@ def login():
             cursor = connection.cursor()
             cursor.execute("SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s", (login_form.email.data,))
             user = cursor.fetchone()
-            if user:
-                if user[2] == login_form.password.data:  # Düz metin şifre kontrolü
-                    user_obj = User(user[0], user[1], user[3], user[4])
-                    login_user(user_obj)
-                    flash('Giriş başarılı! Hoş geldiniz.', 'success')
-                    logger.debug(f"Giriş başarılı: {login_form.email.data}")
-                    return redirect(url_for('index'))
-                else:
-                    flash('Geçersiz şifre. Lütfen tekrar deneyin.', 'danger')
-                    logger.warning(f"Geçersiz şifre denemesi: {login_form.email.data}")
+            if user and user[2] == login_form.password.data:
+                user_obj = User(user[0], user[1], user[3], user[4])
+                login_user(user_obj)
+                flash('Giriş başarılı! Hoş geldiniz.', 'success')
+                logger.debug(f"Giriş başarılı: {login_form.email.data}")
+                return redirect(url_for('index'))
             else:
-                flash('Bu e-posta adresi kayıtlı değil.', 'danger')
-                logger.warning(f"Kayıtsız e-posta denemesi: {login_form.email.data}")
+                flash('Geçersiz e-posta veya şifre.', 'danger')
+                logger.warning(f"Geçersiz giriş denemesi: {login_form.email.data}")
         except Exception as e:
             logger.error(f"Giriş hatası: {str(e)}")
             flash(f'Giriş sırasında hata oluştu: {str(e)}', 'danger')
@@ -232,8 +232,6 @@ def logout():
     flash('Çıkış yapıldı.', 'success')
     return redirect(url_for('login'))
 
-# ... (app.py'nin önceki içeriği aynı kalıyor, sadece index rotası güncelleniyor)
-
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -246,17 +244,8 @@ def index():
             return render_template('index.html', hatalar=[], odeme_gecmisi=[], bakiye=0.00)
 
         cursor = connection.cursor()
-
-        # Hata raporları
         cursor.execute("""
-            SELECT h.hata_id,
-                   u.urun_adi,
-                   b.bayi_adi,
-                   a.ad AS alici_adi,
-                   s.ad AS satici_adi,
-                   h.hata_tarihi,
-                   h.hata_turu,
-                   h.durum
+            SELECT h.hata_id, u.urun_adi, b.bayi_adi, a.ad AS alici_adi, s.ad AS satici_adi, h.hata_tarihi, h.hata_turu, h.durum
             FROM hatalar h
             JOIN urunler u ON h.urun_id = u.urun_id
             JOIN bayiler b ON h.bayi_id = b.bayi_id
@@ -270,16 +259,14 @@ def index():
                 'hata_id': row[0],
                 'urun_adi': row[1],
                 'bayi_adi': row[2],
-                'alici_adi': row[3],
-                'satici_adi': row[4],
-                'hata_tarihi': row[5].strftime('%Y-%m-%d') if isinstance(row[5], (date, datetime)) else str(row[5]) if row[5] else '-',
+                'alici_adi': row[3] or 'Belirtilmemiş',
+                'satici_adi': row[4] or 'Belirtilmemiş',
+                'hata_tarihi': row[5].strftime('%Y-%m-%d') if row[5] else '-',
                 'hata_turu': row[6],
                 'durum': row[7]
-            }
-            for row in cursor.fetchall()
+            } for row in cursor.fetchall()
         ]
 
-        # Ödeme geçmişi
         cursor.execute("""
             SELECT islem, tarih FROM logs 
             WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
@@ -287,21 +274,18 @@ def index():
         """, (current_user.id,))
         odeme_gecmisi = [
             {
-                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[1], (datetime, date)) else str(row[1]),
+                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if row[1] else '-',
                 'islem': row[0],
                 'siparis_id': row[0].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[0] else '-',
                 'tutar': row[0].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row[0] else '-'
             } for row in cursor.fetchall()
         ]
-        logger.debug(f"Ödeme geçmişi (index): {odeme_gecmisi}, Kullanıcı ID: {current_user.id}")
 
-        # Bakiye
         bakiye = 0.00
         if current_user.rol == 'alici':
             cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
             bakiye_result = cursor.fetchone()
             bakiye = float(bakiye_result[0]) if bakiye_result else 0.00
-            logger.debug(f"Kullanıcı bakiyesi: {bakiye}")
 
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Index sayfası görüntülendi'))
         connection.commit()
@@ -364,18 +348,9 @@ def hata_duzenle(hata_id):
             return redirect(url_for('index'))
         cursor = connection.cursor()
         cursor.execute("""
-                       SELECT hata_id,
-                              urun_id,
-                              bayi_id,
-                              alici_id,
-                              satici_id,
-                              hata_tarihi,
-                              hata_turu,
-                              aciklama,
-                              durum
+                       SELECT hata_id, urun_id, bayi_id, alici_id, satici_id, hata_tarihi, hata_turu, aciklama, durum
                        FROM hatalar
-                       WHERE hata_id = %s
-                         AND kullanici_id = %s
+                       WHERE hata_id = %s AND kullanici_id = %s
                        """, (hata_id, current_user.id))
         hata = cursor.fetchone()
         if not hata:
@@ -394,14 +369,8 @@ def hata_duzenle(hata_id):
         if form.validate_on_submit():
             cursor.execute("""
                            UPDATE hatalar
-                           SET urun_id     = %s,
-                               bayi_id     = %s,
-                               alici_id    = %s,
-                               satici_id   = %s,
-                               hata_tarihi = %s,
-                               hata_turu   = %s,
-                               aciklama    = %s,
-                               durum       = %s
+                           SET urun_id = %s, bayi_id = %s, alici_id = %s, satici_id = %s, hata_tarihi = %s,
+                               hata_turu = %s, aciklama = %s, durum = %s
                            WHERE hata_id = %s
                            """, (
                                form.urun_adi.data,
@@ -527,13 +496,12 @@ def sepet():
                 'sepet_id': sepet_id,
                 'urun_adi': urun_adi,
                 'miktar': miktar,
-                'fiyat': fiyat,
-                'toplam': miktar * fiyat,
+                'fiyat': float(fiyat) if fiyat else 0.0,
+                'toplam': miktar * float(fiyat) if fiyat else 0.0,
                 'satici_adi': satici_adi or 'Belirtilmemiş'
             })
         if sifir_fiyat_urunler:
-            flash(f"Uyarı: {', '.join(sifir_fiyat_urunler)} ürünlerinin fiyatı sıfır. Toplam fiyat etkilenebilir.",
-                  'warning')
+            flash(f"Uyarı: {', '.join(sifir_fiyat_urunler)} ürünlerinin fiyatı sıfır. Toplam fiyat etkilenebilir.", 'warning')
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Sepet görüntülendi'))
         connection.commit()
     except Exception as e:
@@ -576,7 +544,7 @@ def siparis_olustur():
             cursor.execute("""
                            INSERT INTO siparisler (kullanici_id, urun_id, miktar, siparis_tarihi, durum, satici_id)
                            VALUES (%s, %s, %s, %s, %s, %s)
-                           """, (current_user.id, urun_id, miktar, datetime.today().date(), 'Bekliyor', satici_id))
+                           """, (current_user.id, urun_id, miktar, datetime.now(), 'Bekliyor', satici_id))
             cursor.execute("UPDATE urunler SET stok = stok - %s WHERE urun_id = %s", (miktar, urun_id))
             cursor.execute("DELETE FROM sepet WHERE sepet_id = %s", (sepet_id,))
             basarili_urunler.append(urun_adi)
@@ -625,11 +593,10 @@ def siparisler():
                 'siparis_id': row[0],
                 'urun_adi': row[1],
                 'miktar': row[2],
-                'siparis_tarihi': row[3].strftime('%Y-%m-%d'),
+                'siparis_tarihi': row[3].strftime('%Y-%m-%d') if row[3] else '-',
                 'durum': row[4],
                 'satici_adi': row[5] or 'Belirtilmemiş',
-                'fiyat': row[6],
-                'toplam': row[2] * row[6]
+                'toplam': row[2] * float(row[6]) if row[6] else 0.0
             })
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Siparişler görüntülendi'))
         connection.commit()
@@ -687,8 +654,6 @@ def satici_analiz():
                                 gunluk_satis_data=[], aylik_satis_labels=[], aylik_satis_data=[], cari_fiyat_labels=[], cari_fiyat_data=[])
 
         cursor = connection.cursor()
-
-        # Satıcı bazlı siparişler
         cursor.execute("SELECT s.ad, COUNT(p.siparis_id) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar "
                        "FROM saticilar s LEFT JOIN siparisler p ON s.satici_id = p.satici_id "
                        "GROUP BY s.ad ORDER BY toplam_miktar DESC")
@@ -696,27 +661,23 @@ def satici_analiz():
         satici_siparis_labels = [row[0] for row in satici_siparisler] if satici_siparisler else []
         satici_siparis_data = [row[2] or 0 for row in satici_siparisler] if satici_siparisler else []
 
-        # Hata türleri
         cursor.execute("SELECT hata_turu AS HataTuru, COUNT(*) AS hata_sayisi FROM hatalar GROUP BY hata_turu ORDER BY hata_sayisi DESC")
         hata_turleri = cursor.fetchall()
         hata_turleri_labels = [row[0] for row in hata_turleri] if hata_turleri else []
         hata_turleri_data = [row[1] for row in hata_turleri] if hata_turleri else []
 
-        # Günlük satış trendleri
         cursor.execute("SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi "
                        "FROM siparisler GROUP BY DATE(siparis_tarihi) ORDER BY gun")
         gunluk_satislar = cursor.fetchall()
         gunluk_satis_labels = [row[0] for row in gunluk_satislar] if gunluk_satislar else []
         gunluk_satis_data = [row[1] for row in gunluk_satislar] if gunluk_satislar else []
 
-        # Aylık satış trendleri
         cursor.execute("SELECT DATE_FORMAT(siparis_tarihi, '%Y-%m') AS ay, COUNT(*) AS siparis_sayisi "
                        "FROM siparisler GROUP BY DATE_FORMAT(siparis_tarihi, '%Y-%m') ORDER BY ay")
         aylik_satislar = cursor.fetchall()
         aylik_satis_labels = [row[0] for row in aylik_satislar] if aylik_satislar else []
         aylik_satis_data = [row[1] for row in aylik_satislar] if aylik_satislar else []
 
-        # Cari fiyatlar
         cursor.execute("SELECT urun_adi, cari_fiyat FROM urunler")
         cari_fiyatlar = cursor.fetchall()
         cari_fiyat_labels = [row[0] for row in cari_fiyatlar] if cari_fiyatlar else []
@@ -724,7 +685,6 @@ def satici_analiz():
 
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Satıcı analiz sayfası görüntülendi'))
         connection.commit()
-
         return render_template('satici_analiz.html',
                             satici_siparisler=satici_siparisler,
                             hata_turleri=hata_turleri,
@@ -752,18 +712,6 @@ def satici_analiz():
     finally:
         close_db_connection(connection)
 
-# ... (Önceki app.py içeriği aynı kalıyor, sadece alicilar_analiz rotası değişiyor)
-
-# ... (Önceki app.py içeriği aynı kalıyor, sadece alicilar_analiz rotası ve yeni form eklenecek)
-
-from wtforms import PasswordField  # Yeni import
-
-# Yeni Profil Güncelleme Formu
-class ProfilGuncelleForm(FlaskForm):
-    ad = StringField('Adınız', validators=[DataRequired(), Length(max=100)])
-    sifre = PasswordField('Yeni Şifre', validators=[DataRequired(), Length(min=6, max=100)])
-    submit = SubmitField('Bilgileri Güncelle')
-
 @app.route('/alicilar_analiz', methods=['GET', 'POST'])
 @login_required
 def alicilar_analiz():
@@ -778,11 +726,10 @@ def alicilar_analiz():
         if not connection:
             flash('Veritabanı bağlantısı kurulamadı.', 'danger')
             return render_template('alicilar_analiz.html', form=form, siparisler=[], cari_fiyat_labels=[],
-                                   cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
+                                cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
 
         cursor = connection.cursor()
 
-        # Profil güncelleme
         if form.validate_on_submit():
             ad = form.ad.data
             sifre = form.sifre.data
@@ -801,7 +748,6 @@ def alicilar_analiz():
                 flash(f"Profil güncelleme hatası: {err}", 'danger')
                 logger.error(f"Profil güncelleme hatası: {err}")
 
-        # Alıcının siparişleri
         cursor.execute("""
             SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, u.fiyat
             FROM siparisler s
@@ -814,18 +760,14 @@ def alicilar_analiz():
                 'siparis_id': row[0],
                 'urun_adi': row[1],
                 'miktar': row[2],
-                'siparis_tarihi': row[3].strftime('%Y-%m-%d') if isinstance(row[3], (date, datetime)) else str(row[3]),
+                'siparis_tarihi': row[3].strftime('%Y-%m-%d') if row[3] else '-',
                 'durum': row[4],
-                'toplam_fiyat': float(row[5]) * row[2]
-            }
-            for row in cursor.fetchall()
+                'toplam_fiyat': float(row[5]) * row[2] if row[5] else 0.0
+            } for row in cursor.fetchall()
         ]
-        logger.debug(f"Siparişler: {siparisler}")
 
-        # Toplam harcama
         toplam_harcama = sum(siparis['toplam_fiyat'] for siparis in siparisler)
 
-        # En çok sipariş edilen ürünler
         cursor.execute("""
             SELECT u.urun_adi, SUM(s.miktar) AS toplam_miktar
             FROM siparisler s
@@ -837,13 +779,10 @@ def alicilar_analiz():
         """, (current_user.id,))
         en_cok_siparis_urunler = [{'urun_adi': row[0], 'toplam_miktar': row[1]} for row in cursor.fetchall()]
 
-        # Alıcının bakiyesi
         cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
         bakiye_result = cursor.fetchone()
         bakiye = float(bakiye_result[0]) if bakiye_result else 0.00
-        logger.debug(f"Kullanıcının bakiyesi: {bakiye}")
 
-        # Cari fiyatlar
         cursor.execute("SELECT urun_adi, cari_fiyat FROM urunler")
         cari_fiyatlar = cursor.fetchall()
         cari_fiyat_labels = [row[0] for row in cari_fiyatlar] if cari_fiyatlar else []
@@ -852,54 +791,21 @@ def alicilar_analiz():
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)",
                       (current_user.id, 'Alıcı analiz görüntülendi'))
         connection.commit()
-
         return render_template('alicilar_analiz.html',
-                              form=form,
-                              siparisler=siparisler,
-                              cari_fiyat_labels=cari_fiyat_labels,
-                              cari_fiyat_data=cari_fiyat_data,
-                              bakiye=bakiye,
-                              toplam_harcama=toplam_harcama,
-                              en_cok_siparis_urunler=en_cok_siparis_urunler)
+                            form=form,
+                            siparisler=siparisler,
+                            cari_fiyat_labels=cari_fiyat_labels,
+                            cari_fiyat_data=cari_fiyat_data,
+                            bakiye=bakiye,
+                            toplam_harcama=toplam_harcama,
+                            en_cok_siparis_urunler=en_cok_siparis_urunler)
     except mysql.connector.Error as err:
         logger.error(f"Veritabanı hatası: {err}")
         flash(f"Veritabanı hatası: {err}", 'danger')
         return render_template('alicilar_analiz.html', form=form, siparisler=[], cari_fiyat_labels=[],
-                              cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
+                            cari_fiyat_data=[], bakiye=0.00, toplam_harcama=0.00, en_cok_siparis_urunler=[])
     finally:
         close_db_connection(connection)
-# ... (Önceki app.py içeriği aynı kalıyor, sadece odeme rotası ve yeni form eklenecek)
-
-from wtforms import HiddenField, FloatField  # Yeni import
-
-# Ödeme Formu
-class OdemeForm(FlaskForm):
-    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
-    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
-    submit = SubmitField('Ödeme Yap')
-
-# ... (Önceki app.py içeriği aynı kalıyor, sadece odeme rotası güncelleniyor)
-
-from wtforms import HiddenField, FloatField
-from decimal import Decimal  # DECIMAL(10,2) için
-from datetime import datetime
-
-# Ödeme Formu
-class OdemeForm(FlaskForm):
-    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
-    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
-    submit = SubmitField('Ödeme Yap')
-
-# ... (app.py'nin önceki içeriği aynı kalıyor, sadece odeme rotası güncelleniyor)
-
-from wtforms import HiddenField, FloatField
-from decimal import Decimal
-from datetime import datetime
-
-class OdemeForm(FlaskForm):
-    siparis_id = HiddenField('Sipariş ID', validators=[DataRequired()])
-    tutar = FloatField('Tutar (TL)', validators=[DataRequired(), NumberRange(min=0.01)], render_kw={"readonly": True})
-    submit = SubmitField('Ödeme Yap')
 
 @app.route('/odeme', methods=['GET', 'POST'])
 @login_required
@@ -919,7 +825,6 @@ def odeme():
 
         cursor = connection.cursor()
 
-        # Ödeme geçmişi
         cursor.execute("""
             SELECT islem, tarih FROM logs 
             WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
@@ -927,15 +832,13 @@ def odeme():
         """, (current_user.id,))
         odeme_gecmisi = [
             {
-                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if isinstance(row[1], (datetime, date)) else str(row[1]),
+                'tarih': row[1].strftime('%Y-%m-%d %H:%M:%S') if row[1] else '-',
                 'islem': row[0],
                 'siparis_id': row[0].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[0] else '-',
                 'tutar': row[0].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row[0] else '-'
             } for row in cursor.fetchall()
         ]
-        logger.debug(f"Ödeme geçmişi: {odeme_gecmisi}, Kullanıcı ID: {current_user.id}")
 
-        # GET isteği
         if request.method == 'GET':
             siparis_id = request.args.get('siparis_id')
             if not siparis_id:
@@ -946,7 +849,6 @@ def odeme():
             cursor.execute("SELECT urun_id, miktar, durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
                           (siparis_id, current_user.id))
             siparis = cursor.fetchone()
-            logger.debug(f"Sipariş verisi: {siparis}, Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
             if not siparis:
                 flash('Sipariş bulunamadı veya size ait değil!', 'danger')
                 logger.error(f"Sipariş bulunamadı: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
@@ -968,98 +870,52 @@ def odeme():
             beklenen_tutar = float(cari_fiyat[0]) * miktar
             form.siparis_id.data = siparis_id
             form.tutar.data = round(beklenen_tutar, 2)
-            logger.debug(f"Ödeme formu hazırlandı: Sipariş ID={siparis_id}, Tutar={beklenen_tutar}")
-
             return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
 
-        # POST isteği
         if form.validate_on_submit():
             siparis_id = form.siparis_id.data
             tutar = form.tutar.data
             logger.debug(f"Ödeme denemesi: Sipariş ID={siparis_id}, Tutar={tutar}, Kullanıcı ID={current_user.id}")
 
-            # Kullanıcı kontrolü
-            cursor.execute("SELECT kullanici_id, email, bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
-            kullanici = cursor.fetchone()
-            if not kullanici:
-                flash('Kullanıcı bulunamadı! Lütfen tekrar giriş yapın.', 'danger')
-                logger.error(f"Kullanıcı bulunamadı: Kullanıcı ID={current_user.id}")
-                return redirect(url_for('siparisler'))
-            kullanici_id, email, mevcut_bakiye = kullanici
-            logger.debug(f"Kullanıcı doğrulandı: ID={kullanici_id}, Email={email}, Bakiye={mevcut_bakiye}")
+            cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
+            mevcut_bakiye = cursor.fetchone()
+            if not mevcut_bakiye or float(mevcut_bakiye[0]) < tutar:
+                flash(f'Yetersiz bakiye! Gerekli: {tutar} TL, Mevcut: {mevcut_bakiye[0] if mevcut_bakiye else 0.00} TL', 'danger')
+                logger.warning(f"Yetersiz bakiye: Gerekli={tutar}, Mevcut={mevcut_bakiye[0] if mevcut_bakiye else 0.00}")
+                return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
 
-            # Sipariş kontrolü
             cursor.execute("SELECT urun_id, miktar, durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
                           (siparis_id, current_user.id))
             siparis = cursor.fetchone()
             if not siparis:
                 flash('Sipariş bulunamadı veya size ait değil!', 'danger')
                 logger.error(f"Sipariş bulunamadı: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
-                return redirect(url_for('siparisler'))
+                return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
             urun_id, miktar, durum = siparis
             if durum != 'Bekliyor':
                 flash(f'Sipariş zaten işlenmiş! Durum: {durum}', 'danger')
                 logger.warning(f"Sipariş zaten işlenmiş: Sipariş ID={siparis_id}, Durum={durum}")
-                return redirect(url_for('siparisler'))
+                return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
 
-            # Ürün fiyat kontrolü
             cursor.execute("SELECT cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
             cari_fiyat = cursor.fetchone()
-            if not cari_fiyat:
-                flash('Ürün fiyatı bulunamadı!', 'danger')
-                logger.error(f"Ürün fiyatı bulunamadı: Ürün ID={urun_id}")
-                return redirect(url_for('siparisler'))
+            if not cari_fiyat or abs(float(cari_fiyat[0]) * miktar - tutar) > 0.01:
+                flash(f'Ödenen tutar ({tutar} TL) cari fiyat ile uyuşmuyor!', 'danger')
+                logger.error(f"Tutar uyuşmazlığı: Ödenen={tutar}, Beklenen={float(cari_fiyat[0]) * miktar}")
+                return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
 
-            beklenen_tutar = float(cari_fiyat[0]) * miktar
-            if abs(float(tutar) - beklenen_tutar) > 0.01:
-                flash(f'Ödenen tutar ({tutar} TL) cari fiyat ({beklenen_tutar} TL) ile uyuşmuyor!', 'danger')
-                logger.error(f"Tutar uyuşmazlığı: Ödenen={tutar}, Beklenen={beklenen_tutar}")
-                return redirect(url_for('siparisler'))
-
-            if mevcut_bakiye < float(tutar):
-                flash(f'Yetersiz bakiye! Gerekli: {tutar} TL, Mevcut: {mevcut_bakiye} TL', 'danger')
-                logger.warning(f"Yetersiz bakiye: Gerekli={tutar}, Mevcut={mevcut_bakiye}")
-                return redirect(url_for('siparisler'))
-
-            # Bakiye güncelleme
-            yeni_bakiye = Decimal(str(mevcut_bakiye - float(tutar))).quantize(Decimal('0.01'))
-            logger.debug(f"Yeni bakiye hesaplandı: {yeni_bakiye}, Tür: {type(yeni_bakiye)}")
+            # Transaction
+            cursor.execute("START TRANSACTION")
+            yeni_bakiye = Decimal(str(float(mevcut_bakiye[0]) - tutar)).quantize(Decimal('0.01'))
             cursor.execute("UPDATE kullanicilar SET bakiye = %s WHERE kullanici_id = %s",
-                          (float(yeni_bakiye), str(current_user.id)))  # ID'yi str'ye çevir
-            affected_rows = cursor.rowcount
-            logger.debug(f"Bakiye güncelleme: Etkilenen satır sayısı={affected_rows}, Sorgu: UPDATE kullanicilar SET bakiye={float(yeni_bakiye)} WHERE kullanici_id={current_user.id}")
-
-            if affected_rows == 0:
-                # Ek kontrol: Kullanıcı var mı?
-                cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE kullanici_id = %s", (str(current_user.id),))
-                if not cursor.fetchone():
-                    connection.rollback()
-                    flash('Kullanıcı veritabanında bulunamadı!', 'danger')
-                    logger.error(f"Kullanıcı veritabanında yok: Kullanıcı ID={current_user.id}")
-                    return redirect(url_for('siparisler'))
-                connection.rollback()
-                flash('Bakiye güncelleme başarısız! Veritabanı hatası.', 'danger')
-                logger.error(f"Bakiye güncelleme başarısız: Kullanıcı ID={current_user.id}, Sorgu: UPDATE kullanicilar SET bakiye={float(yeni_bakiye)} WHERE kullanici_id={current_user.id}")
-                return redirect(url_for('siparisler'))
-
-            # Sipariş durumu güncelleme
-            cursor.execute("UPDATE siparisler SET durum = 'Ödendi', sevkiyat_durum = 'Gönderildi' WHERE siparis_id = %s AND kullanici_id = %s",
-                          (siparis_id, str(current_user.id)))
-            affected_rows_siparis = cursor.rowcount
-            logger.debug(f"Sipariş güncelleme: Etkilenen satır sayısı={affected_rows_siparis}")
-
-            if affected_rows_siparis == 0:
-                connection.rollback()
-                flash('Sipariş durumu güncelleme başarısız! Lütfen tekrar deneyin.', 'danger')
-                logger.error(f"Sipariş durumu güncelleme başarısız: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
-                return redirect(url_for('siparisler'))
-
-            # Log ekleme
+                          (float(yeni_bakiye), current_user.id))
+            cursor.execute("UPDATE siparisler SET durum = 'Onaylandı' WHERE siparis_id = %s AND kullanici_id = %s",
+                          (siparis_id, current_user.id))
             cursor.execute("INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                          (str(current_user.id), f'Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {tutar:.2f} TL', datetime.now()))
+                          (current_user.id, f'Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {tutar:.2f} TL', datetime.now()))
             connection.commit()
+            flash(f'Ödeme başarılı! Kalan bakiye: {yeni_bakiye:.2f} TL', 'success')
             logger.debug(f"Ödeme başarılı: Sipariş ID={siparis_id}, Tutar={tutar:.2f}, Yeni bakiye={yeni_bakiye}")
-            flash(f'Ödeme başarılı! Kalan bakiye: {yeni_bakiye:.2f} TL, sevkiyat işlemi başlatıldı.', 'success')
             return redirect(url_for('siparisler'))
 
     except mysql.connector.Error as err:
@@ -1067,15 +923,16 @@ def odeme():
             connection.rollback()
         logger.error(f"Veritabanı hatası: {err}")
         flash(f'Ödeme sırasında veritabanı hatası: {err}', 'danger')
-        return redirect(url_for('siparisler'))
+        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
     except Exception as e:
         if connection:
             connection.rollback()
         logger.error(f"Genel hata: {e}")
         flash(f'Ödeme sırasında hata oluştu: {e}', 'danger')
-        return redirect(url_for('siparisler'))
+        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
     finally:
         close_db_connection(connection)
+    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
 
 @app.route('/urunler')
 @login_required
@@ -1094,8 +951,7 @@ def urunler():
                 'kategori': row[1],
                 'stok': row[2],
                 'fiyat': row[3]
-            }
-            for row in cursor.fetchall()
+            } for row in cursor.fetchall()
         ]
         cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)", (current_user.id, 'Ürünler görüntülendi'))
         connection.commit()
@@ -1106,7 +962,125 @@ def urunler():
         return render_template('urunler.html', urunler=[])
     finally:
         close_db_connection(connection)
+# app.py'ye eklenecek (veritabanı bağlantısı ve modeller mevcutsa)
+@app.route('/puanla/<int:siparis_id>', methods=['GET', 'POST'])
+@login_required
+def puanla(siparis_id):
+    if current_user.rol != 'alici':
+        flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+        return redirect(url_for('index'))
+
+    connection = None
+    try:
+        connection = get_db_connection()
+        if not connection:
+            flash('Veritabanı bağlantısı başarısız.', 'danger')
+            return redirect(url_for('siparisler'))
+
+        cursor = connection.cursor()
+        cursor.execute("SELECT s.satici_id, s.durum FROM siparisler s WHERE s.siparis_id = %s AND s.kullanici_id = %s",
+                      (siparis_id, current_user.id))
+        siparis = cursor.fetchone()
+        if not siparis or siparis[1] != 'Onaylandı':
+            flash('Bu sipariş puanlanamaz!', 'danger')
+            return redirect(url_for('siparisler'))
+
+        satici_id = siparis[0]
+        if request.method == 'POST':
+            puan = request.form.get('puan')
+            if not puan or int(puan) not in range(1, 6):
+                flash('Lütfen 1-5 arasında bir puan girin!', 'danger')
+            else:
+                cursor.execute("INSERT INTO puanlamalar (siparis_id, kullanici_id, satici_id, puan, tarih) VALUES (%s, %s, %s, %s, %s)",
+                              (siparis_id, current_user.id, satici_id, int(puan), datetime.now()))
+                connection.commit()
+                flash('Puanlama başarıyla eklendi!', 'success')
+                return redirect(url_for('siparisler'))
+        return render_template('puanla.html', siparis_id=siparis_id)
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        flash(f'Hata oluştu: {e}', 'danger')
+        return redirect(url_for('siparisler'))
+    finally:
+        close_db_connection(connection)
 
 
+@app.route('/iptal/<int:siparis_id>', methods=['GET', 'POST'])
+@login_required
+def iptal(siparis_id):
+    if current_user.rol != 'alici':
+        flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+        return redirect(url_for('index'))
+
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
+                      (siparis_id, current_user.id))
+        durum = cursor.fetchone()
+        if not durum or durum[0] not in ['Bekliyor', 'Hazırlanıyor']:
+            flash('Bu sipariş iptal edilemez!', 'danger')
+            return redirect(url_for('siparisler'))
+
+        if request.method == 'POST':
+            cursor.execute("UPDATE siparisler SET durum = 'İptal Edildi' WHERE siparis_id = %s AND kullanici_id = %s",
+                          (siparis_id, current_user.id))
+            cursor.execute("INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                          (current_user.id, f'Sipariş iptal edildi: Sipariş ID {siparis_id}', datetime.datetime.now()))
+            connection.commit()
+            flash('Sipariş iptal edildi!', 'success')
+            return redirect(url_for('siparisler'))
+        return render_template('iptal.html', siparis_id=siparis_id)
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        flash(f'Hata oluştu: {str(e)}', 'danger')
+        return redirect(url_for('siparisler'))
+    finally:
+        close_db_connection(connection)
+
+
+@app.route('/iade/<int:siparis_id>', methods=['GET', 'POST'])
+@login_required
+def iade(siparis_id):
+    if current_user.rol != 'alici':
+        flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+        return redirect(url_for('index'))
+
+    connection = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
+                       (siparis_id, current_user.id))
+        durum = cursor.fetchone()
+        if not durum or durum[0] not in ['Onaylandı', 'Teslim Edildi']:
+            flash('Bu sipariş iade edilemez!', 'danger')
+            return redirect(url_for('siparisler'))
+
+        if request.method == 'POST':
+            iade_nedeni = request.form.get('iade_nedeni')
+            cursor.execute(
+                "UPDATE siparisler SET durum = 'İade Edildi', iade_nedeni = %s WHERE siparis_id = %s AND kullanici_id = %s",
+                (iade_nedeni, siparis_id, current_user.id))
+            cursor.execute("INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                           (current_user.id, f'Sipariş iade edildi: Sipariş ID {siparis_id}, Neden: {iade_nedeni}',
+                            datetime.now()))
+            connection.commit()
+            flash('Sipariş iade talebi oluşturuldu!', 'success')
+            return redirect(url_for('siparisler'))
+        return render_template('iade.html', siparis_id=siparis_id)
+
+    except Exception as e:
+        if connection:
+            connection.rollback()
+        flash(f'Hata oluştu: {e}', 'danger')
+        return redirect(url_for('siparisler'))
+    finally:
+        close_db_connection(connection)
 if __name__ == "__main__":
     app.run(debug=True, port=8080, use_reloader=False)
