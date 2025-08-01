@@ -1,3 +1,7 @@
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
@@ -25,7 +29,28 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '1234567890')
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
+EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
 
+
+# E-posta gönderme fonksiyonu
+def send_email(to_email, subject, body):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_ADDRESS
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        with smtplib.SMTP('smtp.office365.com', 587) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+        logger.debug(f"E-posta gönderildi: {to_email}, Konu: {subject}")
+        return True
+    except Exception as e:
+        logger.error(f"E-posta gönderme hatası: {str(e)}")
+        return False
 # Kullanıcı sınıfı
 class User(UserMixin):
     def __init__(self, kullanici_id, email, ad, rol):
