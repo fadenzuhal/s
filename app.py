@@ -7,7 +7,7 @@ from wtforms.validators import DataRequired, Length, Optional, NumberRange, Emai
 from dotenv import load_dotenv
 import os
 import logging
-from datetime import datetime, date
+from datetime import datetime
 from decimal import Decimal
 
 from config.db_config import close_db_connection, get_db_connection
@@ -962,7 +962,7 @@ def urunler():
         return render_template('urunler.html', urunler=[])
     finally:
         close_db_connection(connection)
-# app.py'ye eklenecek (veritabanı bağlantısı ve modeller mevcutsa)
+
 @app.route('/puanla/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def puanla(siparis_id):
@@ -1006,7 +1006,6 @@ def puanla(siparis_id):
     finally:
         close_db_connection(connection)
 
-
 @app.route('/iptal/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def iptal(siparis_id):
@@ -1029,7 +1028,7 @@ def iptal(siparis_id):
             cursor.execute("UPDATE siparisler SET durum = 'İptal Edildi' WHERE siparis_id = %s AND kullanici_id = %s",
                           (siparis_id, current_user.id))
             cursor.execute("INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                          (current_user.id, f'Sipariş iptal edildi: Sipariş ID {siparis_id}', datetime.datetime.now()))
+                          (current_user.id, f'Sipariş iptal edildi: Sipariş ID {siparis_id}', datetime.now()))
             connection.commit()
             flash('Sipariş iptal edildi!', 'success')
             return redirect(url_for('siparisler'))
@@ -1042,7 +1041,6 @@ def iptal(siparis_id):
         return redirect(url_for('siparisler'))
     finally:
         close_db_connection(connection)
-
 
 @app.route('/iade/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
@@ -1082,5 +1080,76 @@ def iade(siparis_id):
         return redirect(url_for('siparisler'))
     finally:
         close_db_connection(connection)
+
+@app.route('/takip/<int:siparis_id>')
+@login_required
+def takip(siparis_id):
+    if not current_user.is_authenticated:
+        flash('Oturumunuz zaman aşımına uğradı. Lütfen tekrar giriş yapın.', 'danger')
+        logger.warning(f"Oturum zaman aşımı: Sipariş ID={siparis_id}")
+        return redirect(url_for('login'))
+
+    if current_user.rol != 'alici':
+        flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
+        logger.warning(f"Yetkisiz erişim: Kullanıcı ID={current_user.id}, Rol={current_user.rol}")
+        return redirect(url_for('index'))
+
+    connection = None
+    try:
+        connection = get_db_connection()
+        if not connection:
+            flash('Veritabanı bağlantısı başarısız.', 'danger')
+            logger.error(f"Veritabanı bağlantısı başarısız: Sipariş ID={siparis_id}")
+            return redirect(url_for('siparisler'))
+
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT s.siparis_id,
+                   u.urun_adi,
+                   s.miktar,
+                   s.siparis_tarihi,
+                   s.durum,
+                   s.takip_kodu,
+                   s.guncel_durum,
+                   s.guncelleme_tarihi
+            FROM siparisler s
+            JOIN urunler u ON s.urun_id = u.urun_id
+            WHERE s.siparis_id = %s
+              AND s.kullanici_id = %s
+        """, (siparis_id, current_user.id))
+        siparis = cursor.fetchone()
+        if not siparis:
+            flash('Sipariş bulunamadı veya size ait değil!', 'danger')
+            logger.error(f"Sipariş bulunamadı: Sipariş ID={siparis_id}, Kullanıcı ID={current_user.id}")
+            return redirect(url_for('siparisler'))
+
+        siparis_data = {
+            'siparis_id': siparis[0],
+            'urun_adi': siparis[1],
+            'miktar': siparis[2],
+            'siparis_tarihi': siparis[3].strftime('%Y-%m-%d') if siparis[3] else '-',
+            'durum': siparis[4],
+            'takip_kodu': siparis[5] or 'Belirtilmemiş',
+            'guncel_durum': siparis[6] or siparis[4],
+            'guncelleme_tarihi': siparis[7].strftime('%Y-%m-%d %H:%M') if siparis[7] else '-'
+        }
+        cursor.execute("INSERT INTO logs (kullanici_id, islem) VALUES (%s, %s)",
+                      (current_user.id, f'Sipariş takip edildi: Sipariş ID={siparis_id}'))
+        connection.commit()
+        return render_template('takip.html', siparis=siparis_data)
+    except mysql.connector.Error as err:
+        logger.error(f"Veritabanı hatası: {err}, Sipariş ID={siparis_id}")
+        flash(f"Veritabanı hatası: {err}", 'danger')
+        return redirect(url_for('siparisler'))
+    except Exception as e:
+        logger.error(f"Takip hatası: {str(e)}, Sipariş ID={siparis_id}")
+        flash(f'Hata oluştu: {str(e)}', 'danger')
+        return redirect(url_for('siparisler'))
+    finally:
+        if connection:
+            close_db_connection(connection)
+        else:
+            logger.error(f"Bağlantı zaten kapalı: Sipariş ID={siparis_id}")
+
 if __name__ == "__main__":
     app.run(debug=True, port=8080, use_reloader=False)

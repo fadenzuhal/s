@@ -1,54 +1,75 @@
 <!DOCTYPE html>
+<html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Siparişlerim</title>
+    <title>Siparişlerim - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
 </head>
 <body>
-<div class="container mt-5">
-    <h1>Siparişlerim</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-    <table class="table table-striped">
-        <thead><tr><th>Sipariş ID</th><th>Ürün Adı</th><th>Miktar</th><th>Sipariş Tarihi</th><th>Durum</th><th>Satıcı</th><th>Toplam Tutar</th><th>İşlem</th></tr></thead>
-        <tbody>
-        {% for siparis in siparisler %}
-            <tr>
-                <td>{{ siparis.siparis_id }}</td>
-                <td>{{ siparis.urun_adi }}</td>
-                <td>{{ siparis.miktar }}</td>
-                <td>{{ siparis.siparis_tarihi|default('-') }}</td>
-                <td>{{ siparis.durum }}</td>
-                <td>{{ siparis.satici_adi }}</td>
-                <td>{{ siparis.toplam|round(2) }} TL</td>
-                <td>
-                    {% if siparis.durum == 'Bekliyor' %}
-                        <a href="{{ url_for('odeme', siparis_id=siparis.siparis_id) }}" class="btn btn-sm btn-adopen">Ödeme Yap</a>
-                    {% elif siparis.durum == 'Onaylandı' %}
-                        <a href="{{ url_for('puanla', siparis_id=siparis.siparis_id) }}" class="btn btn-sm btn-info">Puanla</a>
-                    {% endif %}
-                    {% if siparis.durum == 'Bekliyor' or siparis.durum == 'Hazırlanıyor' %}
-                        <a href="{{ url_for('iptal', siparis_id=siparis.siparis_id) }}" class="btn btn-sm btn-danger">İptal Et</a>
-                    {% elif siparis.durum == 'Onaylandı' or siparis.durum == 'Teslim Edildi' %}
-                        <a href="{{ url_for('iade', siparis_id=siparis.siparis_id) }}" class="btn btn-sm btn-warning">İade Et</a>
-                    {% endif %}
-                </td>
-            </tr>
+    <div class="container mt-5">
+        <h1>Siparişlerim</h1>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% if siparisler %}
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Sipariş ID</th>
+                        <th>Ürün Adı</th>
+                        <th>Miktar</th>
+                        <th>Sipariş Tarihi</th>
+                        <th>Durum</th>
+                        <th>Satıcı</th>
+                        <th>Toplam Tutar</th>
+                        <th>İşlem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for siparis in siparisler %}
+                        <tr>
+                            <td>{{ siparis.siparis_id }}</td>
+                            <td>{{ siparis.urun_adi }}</td>
+                            <td>{{ siparis.miktar }}</td>
+                            <td>{{ siparis.siparis_tarihi|default('-') }}</td>
+                            <td>{{ siparis.durum }}</td>
+                            <td>{{ siparis.satici_adi }}</td>
+                            <td>{{ siparis.toplam|round(2) }} TL</td>
+                            <td>
+                                {% if siparis.durum in ['Onaylandı', 'Teslim Edildi', 'Kargoda', 'Hazırlanıyor'] %}
+                                    <a href="{{ url_for('takip', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm">Takip Et</a>
+                                {% endif %}
+                                {% if siparis.durum == 'Bekliyor' %}
+                                    <a href="{{ url_for('odeme', siparis_id=siparis.siparis_id) }}" class="btn btn-success btn-sm">Ödeme Yap</a>
+                                {% elif siparis.durum == 'Onaylandı' %}
+                                    <a href="{{ url_for('puanla', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm">Puanla</a>
+                                {% endif %}
+                                {% if siparis.durum in ['Bekliyor', 'Hazırlanıyor'] %}
+                                    <a href="{{ url_for('iptal', siparis_id=siparis.siparis_id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Siparişi iptal etmek istediğinize emin misiniz?');">İptal Et</a>
+                                {% elif siparis.durum in ['Onaylandı', 'Teslim Edildi'] %}
+                                    <a href="{{ url_for('iade', siparis_id=siparis.siparis_id) }}" class="btn btn-warning btn-sm">İade Et</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         {% else %}
-            <tr><td colspan="8">Sipariş bulunamadı.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    <a href="{{ url_for('index') }}" class="btn btn-secondary">Geri Dön</a>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+            <div class="alert alert-info" role="alert">
+                Sipariş bulunamadı.
+            </div>
+        {% endif %}
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Geri Dön</a>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
