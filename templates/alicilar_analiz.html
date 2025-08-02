@@ -33,66 +33,83 @@
             {% endfor %}
         {% endif %}
     {% endwith %}
-    <h2 class="mt-5">Profil Bilgileri</h2>
-    <div class="mb-4">
-        <p><strong>E-posta:</strong> {{ current_user.email }}</p>
-        <p><strong>Ad:</strong> {{ current_user.ad }}</p>
-        <p><strong>Bakiye:</strong> {{ bakiye|round(2) }} TL</p>
-    </div>
-    <h3>Profil Güncelle</h3>
-    <form method="POST" action="{{ url_for('alicilar_analiz') }}">
-        {{ form.hidden_tag() }}
-        <div class="mb-3"><label for="ad" class="form-label">Adınız</label><input type="text" class="form-control" id="ad" name="ad" value="{{ current_user.ad }}" required></div>
-        <div class="mb-3"><label for="sifre" class="form-label">Yeni Şifre</label><input type="password" class="form-control" id="sifre" name="sifre" placeholder="Yeni şifrenizi girin" required></div>
-        {{ form.submit(class="btn btn-adopen") }}
-    </form>
-    <div class="mt-4">
-        <a href="{{ url_for('index') }}" class="btn btn-primary btn-adopen">Ana Sayfa</a>
-        <a href="{{ url_for('hata_ekle') }}" class="btn btn-primary btn-adopen">Hata Raporu Ekle</a>
-        <a href="{{ url_for('sepet_ekle') }}" class="btn btn-success btn-adopen">Sepete Ürün Ekle</a>
-        <a href="{{ url_for('sepet') }}" class="btn btn-info btn-adopen">Sepeti Görüntüle</a>
-        <a href="{{ url_for('siparisler') }}" class="btn btn-warning btn-adopen">Siparişlerim</a>
-        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen">Çıkış Yap</a>
-    </div>
-    <h2 class="mt-5">Siparişler</h2>
-    <p><strong>Toplam Harcama:</strong> {{ toplam_harcama|round(2) }} TL</p>
-    <table class="table table-striped">
-        <thead><tr><th>Sipariş ID</th><th>Ürün Adı</th><th>Miktar</th><th>Sipariş Tarihi</th><th>Durum</th><th>Toplam Fiyat</th></tr></thead>
-        <tbody>
-        {% if siparisler %}
-            {% for siparis in siparisler %}
-                <tr>
-                    <td>{{ siparis.siparis_id }}</td>
-                    <td>{{ siparis.urun_adi }}</td>
-                    <td>{{ siparis.miktar }}</td>
-                    <td>{{ siparis.siparis_tarihi }}</td>
-                    <td>{{ siparis.durum }}</td>
-                    <td>{{ siparis.toplam_fiyat|round(2) }} TL</td>
-                </tr>
-            {% endfor %}
-        {% else %}
-            <tr><td colspan="6">Sipariş bulunamadı.</td></tr>
-        {% endif %}
-        </tbody>
-    </table>
-    <h2 class="mt-5">En Çok Sipariş Edilen Ürünler</h2>
-    <table class="table table-striped">
-        <thead><tr><th>Ürün Adı</th><th>Toplam Miktar</th></tr></thead>
-        <tbody>
-        {% if en_cok_siparis_urunler %}
-            {% for urun in en_cok_siparis_urunler %}
-                <tr>
-                    <td>{{ urun.urun_adi }}</td>
-                    <td>{{ urun.toplam_miktar }}</td>
-                </tr>
-            {% endfor %}
-        {% else %}
-            <tr><td colspan="2">Sipariş verisi bulunamadı.</td></tr>
-        {% endif %}
-        </tbody>
-    </table>
-    <h2 class="mt-5">Ürünlerin Cari Fiyatları</h2>
-    <canvas id="cariFiyatChart" width="400" height="200"></canvas>
+    {% if current_user.rol == 'alici' %}
+        <h2 class="mt-5">Profil Bilgileri</h2>
+        <div class="mb-4">
+            <p><strong>E-posta:</strong> {{ current_user.email }}</p>
+            <p><strong>Ad:</strong> {{ current_user.ad }}</p>
+            <p><strong>Bakiye:</strong> {{ bakiye|round(2) }} TL</p>
+        </div>
+        <h3>Profil Güncelle</h3>
+        <form method="POST" action="{{ url_for('alicilar_analiz') }}">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                <label for="ad" class="form-label">Adınız</label>
+                <input type="text" class="form-control" id="ad" name="ad" value="{{ current_user.ad }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="sifre" class="form-label">Yeni Şifre</label>
+                <input type="password" class="form-control" id="sifre" name="sifre" placeholder="Yeni şifrenizi girin" required>
+            </div>
+            {{ form.submit(class="btn btn-adopen") }}
+        </form>
+        <div class="mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-adopen">Ana Sayfa</a>
+            <a href="{{ url_for('hata_ekle') }}" class="btn btn-primary btn-adopen">Hata Raporu Ekle</a>
+            <a href="{{ url_for('sepet_ekle') }}" class="btn btn-success btn-adopen">Sepete Ürün Ekle</a>
+            <a href="{{ url_for('sepet') }}" class="btn btn-info btn-adopen">Sepeti Görüntüle</a>
+            <a href="{{ url_for('siparisler') }}" class="btn btn-warning btn-adopen">Siparişlerim</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen">Çıkış Yap</a>
+        </div>
+        <h2 class="mt-5">Siparişler</h2>
+        <p><strong>Toplam Harcama:</strong> {{ toplam_harcama|round(2) }} TL</p>
+        <table class="table table-striped">
+            <thead><tr><th>Sipariş ID</th><th>Ürün Adı</th><th>Miktar</th><th>Sipariş Tarihi</th><th>Durum</th><th>Toplam Fiyat</th></tr></thead>
+            <tbody>
+            {% if siparisler %}
+                {% for siparis in siparisler %}
+                    <tr>
+                        <td>{{ siparis.siparis_id }}</td>
+                        <td>{{ siparis.urun_adi }}</td>
+                        <td>{{ siparis.miktar }}</td>
+                        <td>{{ siparis.siparis_tarihi }}</td>
+                        <td>{{ siparis.durum }}</td>
+                        <td>{{ siparis.toplam_fiyat|round(2) }} TL</td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="6">Sipariş bulunamadı.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        <h2 class="mt-5">En Çok Sipariş Edilen Ürünler</h2>
+        <table class="table table-striped">
+            <thead><tr><th>Ürün Adı</th><th>Toplam Miktar</th></tr></thead>
+            <tbody>
+            {% if en_cok_siparis_urunler %}
+                {% for urun in en_cok_siparis_urunler %}
+                    <tr>
+                        <td>{{ urun.urun_adi }}</td>
+                        <td>{{ urun.toplam_miktar }}</td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="2">Sipariş verisi bulunamadı.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+        <h2 class="mt-5">Ürünlerin Cari Fiyatları</h2>
+        <canvas id="cariFiyatChart" width="400" height="200"></canvas>
+    {% else %}
+        <div class="alert alert-danger alert-adopen">
+            Bu sayfa yalnızca alıcılar için geçerlidir. {{ current_user.rol }} olarak erişiminiz yok!
+            {% if current_user.rol == 'admin' %}
+                <a href="{{ url_for('admin_kullanicilar') }}" class="btn btn-adopen btn-sm">Admin Paneline Git</a>
+            {% elif current_user.rol == 'satici' %}
+                <a href="{{ url_for('satici_analiz') }}" class="btn btn-adopen btn-sm">Satıcı Analizine Git</a>
+            {% endif %}
+        </div>
+    {% endif %}
 </div>
 <script>
     const ctx = document.getElementById('cariFiyatChart').getContext('2d');
@@ -103,3 +120,5 @@
     });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
