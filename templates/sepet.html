@@ -10,7 +10,7 @@
 <body>
     <div class="container mt-5">
         <h1>Sepetiniz</h1>
-        
+
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -21,7 +21,7 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        
+
         <table class="table table-striped">
             <thead>
                 <tr>
@@ -50,7 +50,7 @@
                 {% endfor %}
             </tbody>
         </table>
-        
+
         <a href="{{ url_for('siparis_olustur') }}" class="btn btn-success">Sipariş Oluştur</a>
         <a href="{{ url_for('index') }}" class="btn btn-secondary">Geri Dön</a>
     </div>

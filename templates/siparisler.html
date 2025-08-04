@@ -5,15 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Siparişlerim - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
     <style>
         .alert-adopen { border-left: 4px solid #1e3b77; }
-        .btn-adopen { background-color: #1e3b77; color: white; }
-        .wave-background { position: fixed; bottom: 0; left: 0; width: 100%; z-index: -1; }
+        .btn-adopen {
+            background-color: #1e3b77;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-adopen:hover {
+            background-color: #15305b;
+            transform: translateY(-2px);
+        }
+        .wave-background {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: -1;
+        }
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 12px;
+            font-size: 0.9em;
+        }
+        .status-bekliyor { background-color: #ffc107; color: #fff; }
+        .status-hazirlanıyor { background-color: #17a2b8; color: #fff; }
+        .status-kargoda { background-color: #007bff; color: #fff; }
+        .status-onaylandi { background-color: #28a745; color: #fff; }
+        .status-teslim-edildi { background-color: #28a745; color: #fff; }
+        .status-iptal-edildi { background-color: #dc3545; color: #fff; }
+        .status-iade-edildi { background-color: #dc3545; color: #fff; }
+        .status-tamamlandi { background-color: #6c757d; color: #fff; }
+        .table th, .table td { vertical-align: middle; }
+        .table-responsive { border-radius: 8px; overflow: hidden; }
     </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Siparişlerim</h1>
+        <h1 class="mb-4">Siparişlerim</h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -24,131 +56,185 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
         {% if siparisler %}
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Sipariş ID</th>
-                        <th>Ürün Adı</th>
-                        <th>Miktar</th>
-                        <th>Sipariş Tarihi</th>
-                        <th>Durum</th>
-                        <th>Satıcı</th>
-                        <th>Toplam Tutar</th>
-                        <th>İşlem</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for siparis in siparisler %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="siparisTable">
+                    <thead class="table-dark">
                         <tr>
-                            <td>{{ siparis.siparis_id }}</td>
-                            <td>{{ siparis.urun_adi }}</td>
-                            <td>{{ siparis.miktar }}</td>
-                            <td>{{ siparis.siparis_tarihi }}</td>
-                            <td>{{ siparis.durum }}</td>
-                            <td>{{ siparis.satici_adi }}</td>
-                            <td>{{ siparis.toplam|round(2) }} TL</td>
-                            <td>
-                                {% if siparis.durum in ['Onaylandı', 'Teslim Edildi', 'Kargoda', 'Hazırlanıyor', 'Tamamlandı'] %}
-                                    <a href="{{ url_for('takip', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm">Takip Et</a>
-                                {% endif %}
-                                {% if siparis.durum == 'Bekliyor' and current_user.rol == 'alici' %}
-                                    <a href="{{ url_for('odeme', siparis_id=siparis.siparis_id) }}" class="btn btn-success btn-sm btn-adopen">Ödeme Yap</a>
-                                    <a href="{{ url_for('iptal_talep', siparis_id=siparis.siparis_id) }}" class="btn btn-danger btn-sm">İptal Talep Et</a>
-                                {% elif siparis.durum in ['Onaylandı', 'Teslim Edildi'] and current_user.rol == 'alici' %}
-                                    <a href="{{ url_for('puanla', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm">Puanla</a>
-                                    <a href="{{ url_for('iade_talep', siparis_id=siparis.siparis_id) }}" class="btn btn-warning btn-sm">İade Talep Et</a>
-                                {% endif %}
-                                {% if current_user.rol in ['satici', 'admin'] and siparis.satici_id == current_user.id|string %}
-                                    <button type="button" class="btn btn-primary btn-sm btn-adopen" data-bs-toggle="modal" data-bs-target="#durumModal-{{ siparis.siparis_id }}">Durumu Güncelle</button>
-                                {% endif %}
-                                <!-- Durum Güncelleme Modal -->
-                                {% if current_user.rol in ['satici', 'admin'] and siparis.satici_id == current_user.id|string %}
-                                    <div class="modal fade" id="durumModal-{{ siparis.siparis_id }}" tabindex="-1" aria-labelledby="durumModalLabel-{{ siparis.siparis_id }}" aria-hidden="true">
-                                        <div class="modal-dialog">
-                                            <div class="modal-content">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title" id="durumModalLabel-{{ siparis.siparis_id }}">Sipariş Durumu Güncelle (ID: {{ siparis.siparis_id }})</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                </div>
-                                                <form method="POST" action="{{ url_for('durum_guncelle', siparis_id=siparis.siparis_id) }}">
-                                                    <div class="modal-body">
-                                                        <div class="mb-3">
-                                                            <label for="durum-{{ siparis.siparis_id }}" class="form-label">Yeni Durum</label>
-                                                            <select class="form-select" id="durum-{{ siparis.siparis_id }}" name="durum" required>
-                                                                {% for durum in ['Bekliyor', 'Hazırlanıyor', 'Kargoda', 'Onaylandı', 'Teslim Edildi', 'İptal Edildi', 'İade Edildi', 'Tamamlandı'] %}
-                                                                    <option value="{{ durum }}" {% if siparis.durum == durum %}selected{% endif %}>{{ durum }}</option>
-                                                                {% endfor %}
-                                                            </select>
-                                                        </div>
-                                                        <div class="mb-3">
-                                                            <label for="takip_kodu-{{ siparis.siparis_id }}" class="form-label">Takip Kodu (Opsiyonel)</label>
-                                                            <input type="text" class="form-control" id="takip_kodu-{{ siparis.siparis_id }}" name="takip_kodu" value="{{ siparis.takip_kodu|default('') }}">
-                                                        </div>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
-                                                        <button type="submit" class="btn btn-primary btn-adopen">Güncelle</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% if current_user.rol in ['satici', 'admin'] and talepler %}
-                <h3>Talepler</h3>
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Talep ID</th>
                             <th>Sipariş ID</th>
-                            <th>Talep Tipi</th>
-                            <th>Neden</th>
+                            <th>Ürün Adı</th>
+                            <th>Miktar</th>
+                            <th>Sipariş Tarihi</th>
                             <th>Durum</th>
-                            <th>Talep Tarihi</th>
+                            <th>Satıcı</th>
+                            <th>Toplam Tutar</th>
                             <th>İşlem</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for talep in talepler %}
+                        {% for siparis in siparisler %}
                             <tr>
-                                <td>{{ talep.id }}</td>
-                                <td>{{ talep.siparis_id }}</td>
-                                <td>{{ talep.talep_tipi|capitalize }}</td>
-                                <td>{{ talep.talep_nedeni|default('-') }}</td>
-                                <td>{{ talep.talep_durumu }}</td>
-                                <td>{{ talep.talep_tarihi }}</td>
+                                <td>{{ siparis.siparis_id }}</td>
+                                <td>{{ siparis.urun_adi }}</td>
+                                <td>{{ siparis.miktar }}</td>
+                                <td>{{ siparis.siparis_tarihi }}</td>
                                 <td>
-                                    {% if talep.talep_durumu == 'Bekliyor' %}
-                                        <form action="{{ url_for('talep_onayla', talep_id=talep.id) }}" method="POST" style="display:inline;">
-                                            <button type="submit" class="btn btn-success btn-sm btn-adopen">Onayla</button>
-                                        </form>
-                                        <form action="{{ url_for('talep_reddet', talep_id=talep.id) }}" method="POST" style="display:inline;">
-                                            <button type="submit" class="btn btn-danger btn-sm">Reddet</button>
-                                        </form>
-                                    {% endif %}
+                                    <span class="status-badge status-{{ siparis.durum|lower|replace(' ', '-') }}">
+                                        {{ siparis.durum }}
+                                    </span>
+                                </td>
+                                <td>{{ siparis.satici_adi }}</td>
+                                <td>{{ siparis.toplam|round(2) }} TL</td>
+                                <td>
+                                    <div class="d-flex gap-2">
+                                        {% if siparis.durum in ['Onaylandı', 'Teslim Edildi', 'Kargoda', 'Hazırlanıyor', 'Tamamlandı'] %}
+                                            <a href="{{ url_for('takip', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm btn-adopen">
+                                                <i class="fas fa-truck"></i> Takip Et
+                                            </a>
+                                        {% endif %}
+                                        {% if siparis.durum == 'Bekliyor' and current_user.rol == 'alici' %}
+                                            <a href="{{ url_for('odeme', siparis_id=siparis.siparis_id) }}" class="btn btn-success btn-sm btn-adopen">
+                                                <i class="fas fa-credit-card"></i> Ödeme Yap
+                                            </a>
+                                            <a href="{{ url_for('iptal_talep', siparis_id=siparis.siparis_id) }}" class="btn btn-danger btn-sm btn-adopen">
+                                                <i class="fas fa-ban"></i> İptal Talep Et
+                                            </a>
+                                        {% elif siparis.durum in ['Onaylandı', 'Teslim Edildi'] and current_user.rol == 'alici' %}
+                                            <a href="{{ url_for('puanla', siparis_id=siparis.siparis_id) }}" class="btn btn-info btn-sm btn-adopen">
+                                                <i class="fas fa-star"></i> Puanla
+                                            </a>
+                                            <a href="{{ url_for('iade_talep', siparis_id=siparis.siparis_id) }}" class="btn btn-warning btn-sm btn-adopen">
+                                                <i class="fas fa-undo"></i> İade Talep Et
+                                            </a>
+                                        {% endif %}
+                                        {% if current_user.rol in ['satici', 'admin'] and siparis.satici_id == current_user.id|string %}
+                                            <button type="button" class="btn btn-primary btn-sm btn-adopen" data-bs-toggle="modal" data-bs-target="#durumModal-{{ siparis.siparis_id }}">
+                                                <i class="fas fa-edit"></i> Durumu Güncelle
+                                            </button>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
+                            <!-- Durum Güncelleme Modal -->
+                            {% if current_user.rol in ['satici', 'admin'] and siparis.satici_id == current_user.id|string %}
+                                <div class="modal fade" id="durumModal-{{ siparis.siparis_id }}" tabindex="-1" aria-labelledby="durumModalLabel-{{ siparis.siparis_id }}" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="durumModalLabel-{{ siparis.siparis_id }}">Sipariş Durumu Güncelle (ID: {{ siparis.siparis_id }})</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <form method="POST" action="{{ url_for('durum_guncelle', siparis_id=siparis.siparis_id) }}">
+                                                <div class="modal-body">
+                                                    <div class="mb-3">
+                                                        <label for="durum-{{ siparis.siparis_id }}" class="form-label">Yeni Durum</label>
+                                                        <select class="form-select" id="durum-{{ siparis.siparis_id }}" name="durum" required>
+                                                            {% for durum in ['Bekliyor', 'Hazırlanıyor', 'Kargoda', 'Onaylandı', 'Teslim Edildi', 'İptal Edildi', 'İade Edildi', 'Tamamlandı'] %}
+                                                                <option value="{{ durum }}" {% if siparis.durum == durum %}selected{% endif %}>{{ durum }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="takip_kodu-{{ siparis.siparis_id }}" class="form-label">Takip Kodu (Opsiyonel)</label>
+                                                        <input type="text" class="form-control" id="takip_kodu-{{ siparis.siparis_id }}" name="takip_kodu" value="{{ siparis.takip_kodu|default('') }}">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                                                    <button type="submit" class="btn btn-primary btn-adopen">Güncelle</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endif %}
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+            {% if current_user.rol in ['satici', 'admin'] and talepler %}
+                <h3 class="mt-5">Talepler</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="talepTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Talep ID</th>
+                                <th>Sipariş ID</th>
+                                <th>Talep Tipi</th>
+                                <th>Neden</th>
+                                <th>Durum</th>
+                                <th>Talep Tarihi</th>
+                                <th>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for talep in talepler %}
+                                <tr>
+                                    <td>{{ talep.id }}</td>
+                                    <td>{{ talep.siparis_id }}</td>
+                                    <td>{{ talep.talep_tipi|capitalize }}</td>
+                                    <td>{{ talep.talep_nedeni|default('-') }}</td>
+                                    <td>
+                                        <span class="status-badge status-{{ talep.talep_durumu|lower|replace(' ', '-') }}">
+                                            {{ talep.talep_durumu }}
+                                        </span>
+                                    </td>
+                                    <td>{{ talep.talep_tarihi }}</td>
+                                    <td>
+                                        {% if talep.talep_durumu == 'Bekliyor' %}
+                                            <div class="d-flex gap-2">
+                                                <form action="{{ url_for('talep_onayla', talep_id=talep.id) }}" method="POST" style="display:inline;">
+                                                    <button type="submit" class="btn btn-success btn-sm btn-adopen">
+                                                        <i class="fas fa-check"></i> Onayla
+                                                    </button>
+                                                </form>
+                                                <form action="{{ url_for('talep_reddet', talep_id=talep.id) }}" method="POST" style="display:inline;">
+                                                    <button type="submit" class="btn btn-danger btn-sm btn-adopen">
+                                                        <i class="fas fa-times"></i> Reddet
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             {% elif current_user.rol in ['satici', 'admin'] %}
-                <div class="alert alert-info" role="alert">Talep bulunamadı.</div>
+                <div class="alert alert-info alert-adopen" role="alert">Talep bulunamadı.</div>
             {% endif %}
         {% else %}
-            <div class="alert alert-info" role="alert">Sipariş bulunamadı.</div>
+            <div class="alert alert-info alert-adopen" role="alert">Sipariş bulunamadı.</div>
         {% endif %}
-        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Geri Dön</a>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3 btn-adopen">Geri Dön</a>
     </div>
     <svg class="wave-background" viewBox="0 0 1440 320">
         <path fill="#1e3b77" fill-opacity="1"
               d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,229.3C672,245,768,267,864,256C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
     </svg>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#siparisTable').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/tr.json'
+                },
+                pageLength: 10,
+                order: [[0, 'desc']] // Sipariş ID'ye göre azalan sıralama
+            });
+            $('#talepTable').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/tr.json'
+                },
+                pageLength: 10,
+                order: [[0, 'desc']]
+            });
+        });
+    </script>
 </body>
 </html>

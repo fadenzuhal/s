@@ -3,57 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adopen - Satıcıyı Puanla</title>
+    <title>Sipariş Puanla - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { min-height: 100vh; background: #e0e7ff; display: flex; align-items: center; justify-content: center; }
-        .container { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-        .star { font-size: 2rem; color: #ccc; cursor: pointer; }
-        .star.checked { color: #f1ea73; }
+        .alert-adopen { border-left: 4px solid #1e3b77; }
+        .btn-adopen { background-color: #1e3b77; color: white; transition: all 0.3s ease; }
+        .btn-adopen:hover { background-color: #15305b; transform: translateY(-2px); }
+        .wave-background { position: fixed; bottom: 0; left: 0; width: 100%; z-index: -1; }
+        .card-header { background-color: #1e3b77; color: white; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Satıcıyı Puanla</h2>
+    <div class="container mt-5">
+        <h1 class="mb-4">Sipariş Puanla (ID: {{ siparis.siparis_id }})</h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
                         {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <form method="POST" action="{{ url_for('puanla', siparis_id=siparis_id) }}">
-            <div class="mb-3">
-                <label>Satıcıyı 5 yıldız üzerinden puanlayın:</label>
-                <div class="stars" id="rating">
-                    {% for i in range(1, 6) %}
-                        <span class="star" data-value="{{ i }}">★</span>
-                    {% endfor %}
-                </div>
-                <input type="hidden" name="puan" id="puan" value="">
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Ürün: {{ siparis.urun_adi }}</h5>
             </div>
-            <button type="submit" class="btn btn-primary">Puanla</button>
-            <a href="{{ url_for('siparisler') }}" class="btn btn-secondary">Geri Dön</a>
-        </form>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="puan" class="form-label">Puan (1-5)</label>
+                        <select class="form-select" id="puan" name="puan" required>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="yorum" class="form-label">Yorum (Opsiyonel)</label>
+                        <textarea class="form-control" id="yorum" name="yorum" rows="4"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-adopen"><i class="fas fa-star"></i> Puanla</button>
+                </form>
+            </div>
+        </div>
+
+        <a href="{{ url_for('siparisler') }}" class="btn btn-secondary mt-3 btn-adopen"><i class="fas fa-arrow-left"></i> Geri Dön</a>
     </div>
+    <svg class="wave-background" viewBox="0 0 1440 320">
+        <path fill="#1e3b77" fill-opacity="1"
+              d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,229.3C672,245,768,267,864,256C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+    </svg>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const stars = document.querySelectorAll('.star');
-        const puanInput = document.getElementById('puan');
-        stars.forEach(star => {
-            star.addEventListener('click', () => {
-                const value = star.getAttribute('data-value');
-                puanInput.value = value;
-                stars.forEach(s => s.classList.remove('checked'));
-                star.classList.add('checked');
-                for (let i = 0; i < value; i++) {
-                    stars[i].classList.add('checked');
-                }
-            });
-        });
-    </script>
 </body>
 </html>

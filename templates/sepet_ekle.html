@@ -3,14 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sepete Ürün Ekle</title>
+    <title>Adopen - Sepete Ekle</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .alert-adopen { border-left: 4px solid #1e3b77; }
+        .btn-adopen { background-color: #1e3b77; color: white; transition: all 0.3s ease; }
+        .btn-adopen:hover { background-color: #15305b; transform: translateY(-2px); }
+        .wave-background { position: fixed; bottom: 0; left: 0; width: 100%; z-index: -1; }
+        .card-header { background-color: #1e3b77; color: white; }
+        .form-select, .form-control { border-radius: 0.5rem; }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Sepete Ürün Ekle</h1>
-
+        <h2>Sepete Ekle</h2>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -21,26 +29,62 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-
-        <form method="POST">
-            {{ form.hidden_tag() }}
-            <div class="mb-3">
-                <label for="urun_adi" class="form-label">Ürün Adı</label>
-                {{ form.urun_adi(class="form-select") }}
+        <div class="card">
+            <div class="card-header">
+                <h5>Yeni Ürün Ekle</h5>
             </div>
-            <div class="mb-3">
-                <label for="satici_adi" class="form-label">Satıcı Adı</label>
-                {{ form.satici_adi(class="form-select") }}
+            <div class="card-body">
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        {{ form.urun_adi.label(class="form-label fw-bold") }}
+                        {{ form.urun_adi(class="form-select", id="urun_adi") }}
+                        {% if form.urun_adi.errors %}
+                            {% for error in form.urun_adi.errors %}
+                                <span class="text-danger">{{ error }}</span>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.satici_adi.label(class="form-label fw-bold") }}
+                        {{ form.satici_adi(class="form-select", id="satici_adi") }}
+                        {% if form.satici_adi.errors %}
+                            {% for error in form.satici_adi.errors %}
+                                <span class="text-danger">{{ error }}</span>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.miktar.label(class="form-label fw-bold") }}
+                        {{ form.miktar(class="form-control", placeholder="Miktar") }}
+                        {% if form.miktar.errors %}
+                            {% for error in form.miktar.errors %}
+                                <span class="text-danger">{{ error }}</span>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    {{ form.submit(class="btn btn-primary btn-adopen") }}
+                    <a href="{{ url_for('sepet') }}" class="btn btn-secondary ms-2 btn-adopen">
+                        <i class="fas fa-arrow-left"></i> Geri Dön
+                    </a>
+                </form>
             </div>
-            <div class="mb-3">
-                <label for="miktar" class="form-label">Miktar</label>
-                {{ form.miktar(class="form-control") }}
-            </div>
-            {{ form.submit(class="btn btn-adopen") }}
-        </form>
-
-        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Geri Dön</a>
+        </div>
     </div>
+    <svg class="wave-background" viewBox="0 0 1440 320">
+        <path fill="#1e3b77" fill-opacity="1"
+              d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,229.3C672,245,768,267,864,256C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+    </svg>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#satici_adi').on('change', function() {
+                if ($(this).val() === '0') {
+                    alert('Lütfen geçerli bir satıcı seçin.');
+                }
+            });
+        });
+    </script>
 </body>
 </html>

@@ -1,341 +1,173 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Satıcı Analiz - Adopen</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <title>Satıcı Dashboard - Adopen</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
     <style>
-        body {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #1e3b77, #e0e7ff); /* Lacivertten açık maviye gradyan */
-            color: #333;
-            font-family: Arial, sans-serif;
-        }
-
-        .container {
-            background: rgba(255, 255, 255, 0.95); /* Hafif şeffaf beyaz arka plan */
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2);
-            max-width: 900px;
-            margin: 20px auto;
-        }
-
-        h1, h2, h3 {
-            color: #1e3b77; /* Lacivert başlık */
-        }
-
-        .highlight-section {
-            background-color: #f1ea73; /* Sarı arka plan */
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 78, 135, 0.1);
-            margin-bottom: 20px;
-        }
-
-        .chart-row {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .chart-container {
-            flex: 1;
-            background: #fff;
-            padding: 15px;
-            border-radius: 8px;
-        }
-
-        .btn-adopen {
-            background-color: #f1ea73; /* Sarı buton */
-            color: #1e3b77;
-            border: 1px solid #1e3b77;
-            transition: transform 0.3s ease;
-        }
-
-        .btn-adopen:hover {
-            background-color: #e0d963; /* Hafif koyu sarı */
-            animation: mouse_haraket 0.3s ease forwards;
-        }
-
-        @keyframes mouse_haraket {
-            0% {
-                transform: scale(1);
-            }
-            100% {
-                transform: scale(1.1);
-            }
-        }
-
-        .alert-adopen {
-            border-left: 4px solid #1e3b77;
-            background-color: #e0e7ff; /* Açık mavi arka plan */
-            color: #333;
-            margin: 5px 0;
-        }
-
-        .table {
-            background: #fff;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        .table thead {
-            background-color: #1e3b77;
-            color: #fff;
-        }
-
-        .table tbody tr:hover {
-            background-color: #ffcccb; /* Pembe hover efekti */
-        }
+        .dark-card { background-color: #2c3e50; color: white; border-radius: 10px; }
+        .stock-alert { background-color: #ffe5e5; color: #dc3545; padding: 10px; border-radius: 8px; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="container mt-3">
-        <h1 class="mb-4">Satıcı Analiz Paneli</h1>
-
+    <div class="container py-4">
+        <h2 class="mb-4 text-center">Satıcı Dashboard</h2>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
+                    <div class="alert alert-{{ category }} alert-dismissible fade show">
                         {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
 
-        <!-- En Çok Sipariş Edilen Ürünler -->
-        <div class="highlight-section mb-4">
-            <h2 class="text-primary">En Çok Sipariş Edilen Ürünler</h2>
-            {% if en_cok_siparis_urunler %}
-                <table class="table table-primary table-striped" style="margin-bottom: 10px;">
-                    <thead>
-                        <tr>
-                            <th>Ürün Adı</th>
-                            <th>Sipariş Sayısı</th>
-                            <th>Toplam Miktar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for urun in en_cok_siparis_urunler %}
-                            <tr>
-                                <td>{{ urun.urun_adi }}</td>
-                                <td>{{ urun.siparis_sayisi }}</td>
-                                <td>{{ urun.toplam_miktar }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% if en_cok_siparis_labels and en_cok_siparis_data %}
-                    <canvas id="enCokSiparisChart" style="max-height: 300px;"></canvas>
-                {% endif %}
-            {% else %}
-                <p>Henüz en çok sipariş edilen ürün verisi bulunamadı.</p>
-            {% endif %}
-        </div>
-
-        <!-- Satıcı Bazlı Siparişler -->
-        <h2>Sipariş Analizi</h2>
-        <table class="table table-striped" style="margin-bottom: 10px;">
-            <thead>
-                <tr>
-                    <th>Satıcı</th>
-                    <th>Sipariş Sayısı</th>
-                    <th>Toplam Miktar</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for satici in satici_siparisler %}
-                    <tr>
-                        <td>{{ satici[0] }}</td>
-                        <td>{{ satici[1] }}</td>
-                        <td>{{ satici[2] }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if satici_siparis_labels and satici_siparis_data %}
-            <canvas id="saticiSiparisChart" width="300" height="150"></canvas>
-        {% endif %}
-
-        <!-- Hata Analizi -->
-        <h2>Hata Analizi</h2>
-        <table class="table table-striped" style="margin-bottom: 10px;">
-            <thead>
-                <tr>
-                    <th>Hata Türü</th>
-                    <th>Sayı</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for hata in hata_turleri %}
-                    <tr>
-                        <td>{{ hata[0] }}</td>
-                        <td>{{ hata[1] }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if hata_turleri_labels and hata_turleri_data %}
-            <canvas id="hataTurleriChart" width="300" height="150"></canvas>
-        {% endif %}
-
-        <!-- Satış Trendleri -->
-        <h2>Satış Trendleri</h2>
-        <div class="chart-row">
-            <div class="chart-container">
-                <h3>Günlük</h3>
-                {% if gunluk_satis_labels and gunluk_satis_data %}
-                    <canvas id="gunlukSatisChart" width="300" height="150"></canvas>
-                {% endif %}
+        <!-- Satış İstatistikleri -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card dark-card">
+                    <div class="card-body">
+                        <h5>Satış İstatistikleri</h5>
+                        <table class="table table-dark">
+                            <thead>
+                                <tr>
+                                    <th>Satıcı</th>
+                                    <th>Sipariş Sayısı</th>
+                                    <th>Toplam Miktar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for satici in satici_siparisler %}
+                                    <tr>
+                                        <td>{{ satici.ad }}</td>
+                                        <td>{{ satici.siparis_sayisi }}</td>
+                                        <td>{{ satici.toplam_miktar or 0 }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="3">Veri yok.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-            <div class="chart-container">
-                <h3>Aylık</h3>
-                {% if aylik_satis_labels and aylik_satis_data %}
-                    <canvas id="aylikSatisChart" width="300" height="150"></canvas>
-                {% endif %}
+            <div class="col-md-6">
+                <div class="card dark-card">
+                    <div class="card-body">
+                        <h5>Hata Türleri</h5>
+                        <canvas id="hataChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Cari Fiyatlar -->
-        <h2>Cari Fiyatlar</h2>
-        <table class="table table-striped" style="margin-bottom: 10px;">
-            <thead>
-                <tr>
-                    <th>Ürün Adı</th>
-                    <th>Cari Fiyat (TL)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for i in range(cari_fiyat_labels|length) %}
-                    <tr>
-                        <td>{{ cari_fiyat_labels[i] }}</td>
-                        <td>{{ "%.2f"|format(cari_fiyat_data[i]) }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if cari_fiyat_labels and cari_fiyat_data %}
-            <canvas id="cariFiyatChart" width="300" height="150"></canvas>
-        {% endif %}
+        <!-- Günlük ve Aylık Sipariş Grafikleri -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card dark-card">
+                    <div class="card-body">
+                        <h5>Günlük Sipariş Sayıları</h5>
+                        <canvas id="gunlukSatisChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card dark-card">
+                    <div class="card-body">
+                        <h5>Aylık Sipariş Sayıları</h5>
+                        <canvas id="aylikSatisChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <a href="{{ url_for('logout') }}" class="btn btn-danger btn-adopen mt-2">Çıkış</a>
+        <!-- Stok Durumu -->
+        <h4 class="mb-3">Stok Durumu</h4>
+        <div class="row g-3">
+            {% for urun in urunler %}
+                {% if urun.stok <= 5 %}
+                    <div class="col-md-4">
+                        <div class="stock-alert">
+                            <h6>{{ urun.urun_adi }}</h6>
+                            <p>Stok: {{ urun.stok }} (Düşük!)</p>
+                            <a href="{{ url_for('urun_duzenle', urun_id=urun.urun_id) }}" class="btn btn-warning btn-sm">Stoku Güncelle</a>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Ana Sayfaya Dön</a>
     </div>
 
     <script>
-        {% if en_cok_siparis_labels and en_cok_siparis_data %}
-            const enCokSiparisCtx = document.getElementById('enCokSiparisChart').getContext('2d');
-            new Chart(enCokSiparisCtx, {
-                type: 'bar',
-                data: {
-                    labels: {{ en_cok_siparis_labels|tojson }},
-                    datasets: [{
-                        label: 'Toplam Miktar',
-                        data: {{ en_cok_siparis_data|tojson }},
-                        backgroundColor: '#f1ea73', /* Sarı */
-                        borderColor: '#1e3b77', /* Lacivert */
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    scales: { y: { beginAtZero: true } },
-                    plugins: { legend: { display: true } },
-                    maintainAspectRatio: false
+        // Hata Türleri Grafiği
+        const hataCtx = document.getElementById('hataChart').getContext('2d');
+        new Chart(hataCtx, {
+            type: 'pie',
+            data: {
+                labels: {{ hata_turleri_labels|tojson }},
+                datasets: [{
+                    label: 'Hata Türleri',
+                    data: {{ hata_turleri_data|tojson }},
+                    backgroundColor: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeead'],
+                    borderColor: ['#ff4757', '#3cb371', '#1e90ff', '#66cdaa', '#ffd700'],
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true }
+        });
+
+        // Günlük Sipariş Sayıları Grafiği
+        const gunlukCtx = document.getElementById('gunlukSatisChart').getContext('2d');
+        new Chart(gunlukCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ gunluk_satis_labels|tojson }},
+                datasets: [{
+                    label: 'Günlük Sipariş Sayısı',
+                    data: {{ gunluk_satis_data|tojson }},
+                    backgroundColor: 'rgba(0, 123, 255, 0.6)',
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Sipariş Sayısı' } },
+                    x: { title: { display: true, text: 'Tarih' } }
                 }
-            });
-        {% endif %}
+            }
+        });
 
-        {% if satici_siparis_labels and satici_siparis_data %}
-            const saticiSiparisCtx = document.getElementById('saticiSiparisChart').getContext('2d');
-            new Chart(saticiSiparisCtx, {
-                type: 'bar',
-                data: {
-                    labels: {{ satici_siparis_labels|tojson }},
-                    datasets: [{
-                        label: 'Toplam Miktar',
-                        data: {{ satici_siparis_data|tojson }},
-                        backgroundColor: '#e0e7ff', /* Açık mavi */
-                        borderColor: '#1e3b77', /* Lacivert */
-                        borderWidth: 1
-                    }]
-                },
-                options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-            });
-        {% endif %}
-
-        {% if hata_turleri_labels and hata_turleri_data %}
-            const hataTurleriCtx = document.getElementById('hataTurleriChart').getContext('2d');
-            new Chart(hataTurleriCtx, {
-                type: 'pie',
-                data: {
-                    labels: {{ hata_turleri_labels|tojson }},
-                    datasets: [{
-                        data: {{ hata_turleri_data|tojson }},
-                        backgroundColor: ['#1e3b77', '#f1ea73', '#e0e7ff', '#ffcccb', '#0055a4'] /* Adopen renk paleti */
-                    }]
-                },
-                options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } } }
-            });
-        {% endif %}
-
-        {% if gunluk_satis_labels and gunluk_satis_data %}
-            const gunlukSatisCtx = document.getElementById('gunlukSatisChart').getContext('2d');
-            new Chart(gunlukSatisCtx, {
-                type: 'line',
-                data: {
-                    labels: {{ gunluk_satis_labels|tojson }},
-                    datasets: [{
-                        label: 'Sipariş',
-                        data: {{ gunluk_satis_data|tojson }},
-                        fill: false,
-                        borderColor: '#f1ea73', /* Sarı */
-                        tension: 0.1
-                    }]
-                },
-                options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-            });
-        {% endif %}
-
-        {% if aylik_satis_labels and aylik_satis_data %}
-            const aylikSatisCtx = document.getElementById('aylikSatisChart').getContext('2d');
-            new Chart(aylikSatisCtx, {
-                type: 'line',
-                data: {
-                    labels: {{ aylik_satis_labels|tojson }},
-                    datasets: [{
-                        label: 'Sipariş',
-                        data: {{ aylik_satis_data|tojson }},
-                        fill: false,
-                        borderColor: '#ffcccb', /* Pembe */
-                        tension: 0.1
-                    }]
-                },
-                options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-            });
-        {% endif %}
-
-        {% if cari_fiyat_labels and cari_fiyat_data %}
-            const cariFiyatCtx = document.getElementById('cariFiyatChart').getContext('2d');
-            new Chart(cariFiyatCtx, {
-                type: 'bar',
-                data: {
-                    labels: {{ cari_fiyat_labels|tojson }},
-                    datasets: [{
-                        label: 'Cari Fiyat (TL)',
-                        data: {{ cari_fiyat_data|tojson }},
-                        backgroundColor: '#ffcccb', /* Pembe */
-                        borderColor: '#1e3b77', /* Lacivert */
-                        borderWidth: 1
-                    }]
-                },
-                options: { scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
-            });
-        {% endif %}
+        // Aylık Sipariş Sayıları Grafiği
+        const aylikCtx = document.getElementById('aylikSatisChart').getContext('2d');
+        new Chart(aylikCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ aylik_satis_labels|tojson }},
+                datasets: [{
+                    label: 'Aylık Sipariş Sayısı',
+                    data: {{ aylik_satis_data|tojson }},
+                    backgroundColor: 'rgba(46, 204, 113, 0.6)',
+                    borderColor: 'rgba(46, 204, 113, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Sipariş Sayısı' } },
+                    x: { title: { display: true, text: 'Ay' } }
+                }
+            }
+        });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

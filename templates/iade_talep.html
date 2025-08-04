@@ -1,21 +1,24 @@
+
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sipariş Takip - Adopen</title>
+    <title>İade Talebi - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .alert-adopen { border-left: 4px solid #1e3b77; }
-        .btn-adopen { background-color: #1e3b77; color: white; }
+        .btn-adopen { background-color: #1e3b77; color: white; transition: all 0.3s ease; }
+        .btn-adopen:hover { background-color: #15305b; transform: translateY(-2px); }
         .wave-background { position: fixed; bottom: 0; left: 0; width: 100%; z-index: -1; }
         .card-header { background-color: #1e3b77; color: white; }
     </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Sipariş Takip (ID: {{ siparis.siparis_id }})</h1>
+        <h1 class="mb-4">İade Talebi (Sipariş ID: {{ siparis_id }})</h1>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -29,19 +32,21 @@
 
         <div class="card">
             <div class="card-header">
-                <h5>Sipariş Detayları</h5>
+                <h5>Ürün: {{ urun_adi }}</h5>
             </div>
             <div class="card-body">
-                <p><strong>Ürün Adı:</strong> {{ siparis.urun_adi }}</p>
-                <p><strong>Miktar:</strong> {{ siparis.miktar }}</p>
-                <p><strong>Sipariş Tarihi:</strong> {{ siparis.siparis_tarihi }}</p>
-                <p><strong>Durum:</strong> {{ siparis.durum }}</p>
-                <p><strong>Satıcı:</strong> {{ siparis.satici_adi }}</p>
-                <p><strong>Takip Kodu:</strong> {{ siparis.takip_kodu|default('Yok') }}</p>
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        <label for="neden" class="form-label">İade Nedeni</label>
+                        {{ form.neden(class="form-control", required=True) }}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-adopen"><i class="fas fa-undo"></i> İade Talebi Gönder</button>
+                </form>
             </div>
         </div>
 
-        <a href="{{ url_for('siparisler') }}" class="btn btn-secondary mt-3">Geri Dön</a>
+        <a href="{{ url_for('siparisler') }}" class="btn btn-secondary mt-3 btn-adopen"><i class="fas fa-arrow-left"></i> Geri Dön</a>
     </div>
     <svg class="wave-background" viewBox="0 0 1440 320">
         <path fill="#1e3b77" fill-opacity="1"
