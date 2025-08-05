@@ -4,70 +4,180 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Kullanıcılar</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
 </head>
 <body>
-    <header>
-        <h1>Admin Paneli - Kullanıcı Yönetimi</h1>
-        <nav>
-            <a href="{{ url_for('index') }}">Ana Sayfa</a>
-            <a href="{{ url_for('logout') }}">Çıkış Yap</a>
-        </nav>
+    <button id="theme-toggle">🌙 Karanlık Tema</button>
+    <header class="container mt-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-users fa-3x" style="color: var(--primary-color);"></i>
+                </div>
+                <h1>Admin Paneli - Kullanıcı Yönetimi</h1>
+                <nav class="d-flex justify-content-end">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary me-2"><i class="fas fa-home"></i> Ana Sayfa</a>
+                    <a href="{{ url_for('logout') }}" class="btn btn-danger"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</a>
+                </nav>
+            </div>
+        </div>
     </header>
-    <main>
+    <main class="container mt-4">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                    <div class="alert alert-{{ category }} alert-adopen">{{ message }}</div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <h2>Kullanıcılar</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>E-posta</th>
-                    <th>Ad</th>
-                    <th>Rol</th>
-                    <th>İşlemler</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for kullanici in kullanicilar %}
-                <tr>
-                    <td>{{ kullanici.kullanici_id }}</td>
-                    <td>{{ kullanici.email }}</td>
-                    <td>{{ kullanici.ad }}</td>
-                    <td>
-                        <form action="{{ url_for('rol_guncelle', kullanici_id=kullanici.kullanici_id) }}" method="POST">
-                            <select name="rol">
-                                <option value="alici" {% if kullanici.rol == 'alici' %}selected{% endif %}>Alıcı</option>
-                                <option value="satici" {% if kullanici.rol == 'satici' %}selected{% endif %}>Satıcı</option>
-                                <option value="admin" {% if kullanici.rol == 'admin' %}selected{% endif %}>Admin</option>
-                            </select>
-                            <button type="submit">Güncelle</button>
-                        </form>
-                    </td>
-                    <td>
-                        <a href="{{ url_for('kullanici_sil', kullanici_id=kullanici.kullanici_id) }}" onclick="return confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')">Sil</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <h2>İstatistikler</h2>
-        <p>Toplam Sipariş Sayısı: {{ siparis_sayisi }}</p>
-        <p>Toplam Hata Sayısı: {{ hata_sayisi }}</p>
-        <h2>Son İşlemler</h2>
-        <ul>
-            {% for log in loglar %}
-                <li>{{ log.tarih }} - {{ log.kullanici_adi }}: {{ log.islem }}</li>
-            {% endfor %}
-        </ul>
-        <h2>Ürün Yönetimi</h2>
-        <a href="{{ url_for('urun_ekle') }}">Yeni Ürün Ekle</a>
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-users fa-2x" style="color: var(--primary-color);"></i>
+                </div>
+                <h2>Kullanıcılar</h2>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>E-posta</th>
+                            <th>Ad</th>
+                            <th>Rol</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for kullanici in kullanicilar %}
+                        <tr>
+                            <td>{{ kullanici.kullanici_id }}</td>
+                            <td>{{ kullanici.email }}</td>
+                            <td>{{ kullanici.ad }}</td>
+                            <td>
+                                <form action="{{ url_for('rol_guncelle', kullanici_id=kullanici.kullanici_id) }}" method="POST" class="d-flex align-items-center">
+                                    <select name="rol" class="form-select me-2" style="width: auto;">
+                                        <option value="alici" {% if kullanici.rol == 'alici' %}selected{% endif %}>Alıcı</option>
+                                        <option value="satici" {% if kullanici.rol == 'satici' %}selected{% endif %}>Satıcı</option>
+                                        <option value="admin" {% if kullanici.rol == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-adopen btn-sm"><i class="fas fa-save"></i> Güncelle</button>
+                                </form>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('kullanici_sil', kullanici_id=kullanici.kullanici_id) }}" class="btn btn-danger btn-sm" onclick="return confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')"><i class="fas fa-trash"></i> Sil</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-chart-bar fa-2x" style="color: var(--primary-color);"></i>
+                </div>
+                <h2>İstatistikler</h2>
+                <canvas id="istatistikChart"></canvas>
+                <div class="mt-3">
+                    <p><strong>Toplam Sipariş Sayısı:</strong> {{ siparis_sayisi }}</p>
+                    <p><strong>Toplam Hata Sayısı:</strong> {{ hata_sayisi }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-history fa-2x" style="color: var(--primary-color);"></i>
+                </div>
+                <h2>Son İşlemler</h2>
+                <ul class="list-group">
+                    {% for log in loglar %}
+                        <li class="list-group-item">{{ log.tarih }} - {{ log.kullanici_adi }}: {{ log.islem }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-plus fa-2x" style="color: var(--primary-color);"></i>
+                </div>
+                <h2>Ürün Yönetimi</h2>
+                <a href="{{ url_for('urun_ekle') }}" class="btn btn-adopen"><i class="fas fa-plus"></i> Yeni Ürün Ekle</a>
+            </div>
+        </div>
     </main>
-    <footer>
-        <p>&copy; 2025 Adopen Hata Takip Sistemi</p>
+    <footer class="container mt-4">
+        <div class="card">
+            <div class="card-body text-center">
+                <p>&copy; 2025 Adopen Hata Takip Sistemi</p>
+            </div>
+        </div>
     </footer>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+    <script>
+        const ctx = document.getElementById('istatistikChart').getContext('2d');
+        const istatistikChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Sipariş Sayısı', 'Hata Sayısı'],
+                datasets: [{
+                    label: 'İstatistikler',
+                    data: [{{ siparis_sayisi }}, {{ hata_sayisi }}],
+                    backgroundColor: [
+                        'rgba(40, 167, 69, 0.8)', // Sipariş Sayısı
+                        'rgba(255, 99, 132, 0.8)' // Hata Sayısı
+                    ],
+                    borderColor: [
+                        'rgba(40, 167, 69, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            color: document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333'
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Sistem İstatistikleri',
+                        color: document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Tema değiştiğinde grafik renklerini güncelle
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            istatistikChart.options.plugins.legend.labels.color = document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+            istatistikChart.options.plugins.title.color = document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+            istatistikChart.options.scales.y.ticks.color = document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+            istatistikChart.options.scales.x.ticks.color = document.body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+            istatistikChart.update();
+        });
+    </script>
+</body>
+</html>

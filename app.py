@@ -1,41 +1,29 @@
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+
 from venv import logger
-
-from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-
+from flask_login import  login_user, logout_user
 from decimal import Decimal
 import mysql.connector
-import requests
+import requests,os
 from bs4 import BeautifulSoup
-from config.db_config import close_db_connection, get_db_connection, get_dropdown_choices
+from config.db_config import  get_dropdown_choices
 from models.ContactForm import ContactForm
 from models.DurumGuncelleForm import DurumGuncelleForm
 from models.HataForm import HataForm
 from models.LoginForm import LoginForm
 from models.OdemeForm import OdemeForm
 from models.ProfilGuncelleForm import ProfilGuncelleForm
-from models.PuanForm import PuanForm
 from models.SepetForm import SepetForm
-from models.TalepForm import TalepForm
 from models.UrunForm import UrunForm
 from models.User import User
-
-import os
-from flask import Flask, flash, redirect, render_template, url_for
+from flask import Flask, flash, redirect, render_template, url_for,request
 from flask_login import LoginManager, login_required, current_user
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 from datetime import datetime
 from config.db_config import get_db_connection
-from models.PuanForm import PuanForm
 from models.TalepForm import TalepForm
-
 app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv()
-
 # Flask yapılandırması
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '1234567890')
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp-mail.outlook.com')
@@ -44,10 +32,8 @@ app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('EMAIL_ADDRESS')
 app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_ADDRESS')
-
 # Flask-Mail başlatma
 mail = Mail(app)
-
 # Flask-Login ayarları
 login_manager = LoginManager()
 login_manager.init_app(app)
