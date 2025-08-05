@@ -1,8 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import TextAreaField, SubmitField
+from wtforms import TextAreaField
 from wtforms.validators import DataRequired, Length
 
-
 class TalepForm(FlaskForm):
-    neden = TextAreaField('Neden', validators=[DataRequired(), Length(max=1000)])
-    submit = SubmitField('Talep Gönder')
+    talep_nedeni = TextAreaField('Talep Nedeni', validators=[DataRequired(), Length(min=5, max=500)])

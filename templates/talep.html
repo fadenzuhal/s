@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talep Oluştur - Adopen</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
+</head>
+<body>
+    <button id="theme-toggle">🌙 Karanlık Tema</button>
+    <div class="container mt-5">
+        <div class="card">
+            <div class="card-body">
+                <div class="icon-container">
+                    <i class="fas fa-file-alt fa-3x" style="color: var(--primary-color);"></i>
+                </div>
+                <h2>Talep Oluştur</h2>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-adopen">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                <form method="POST">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        <label for="siparis_id" class="form-label">Sipariş ID</label>
+                        <input type="text" class="form-control" value="{{ siparis_id }}" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="urun_adi" class="form-label">Ürün</label>
+                        <input type="text" class="form-control" value="{{ urun_adi }}" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="talep_nedeni" class="form-label">Talep Nedeni</label>
+                        {{ form.talep_nedeni(class="form-control") }}
+                    </div>
+                    <button type="submit" class="btn btn-adopen">Talebi Gönder</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+</body>
+</html>
