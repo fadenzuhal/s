@@ -34,7 +34,7 @@
             {% endif %}
         {% endwith %}
         <h2 class="mt-4">Ödeme Bilgileri</h2>
-        <form method="POST" action="{{ url_for('odeme') }}">
+        <form method="POST" action="{{ url_for('odeme', siparis_id=form.siparis_id.data) }}" class="needs-validation" novalidate>
             {{ form.hidden_tag() }}
             <div class="mb-3">
                 <label for="siparis_id" class="form-label">Sipariş ID</label>
@@ -44,16 +44,49 @@
                 <label for="tutar" class="form-label">Tutar (TL)</label>
                 {{ form.tutar(class="form-control", readonly=True) }}
             </div>
+            <div class="mb-3">
+                <label for="kart_numarasi" class="form-label">Kart Numarası <span class="text-danger">*</span></label>
+                {{ form.kart_numarasi(class="form-control", placeholder="16 haneli kart numarası", **{'aria-required': 'true', 'aria-describedby': 'kart_numarasi_error'}) }}
+                {% if form.kart_numarasi.errors %}
+                    <div id="kart_numarasi_error" class="invalid-feedback">
+                        {% for error in form.kart_numarasi.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                <label for="son_kullanma_tarihi" class="form-label">Son Kullanma Tarihi (MM/YY) <span class="text-danger">*</span></label>
+                {{ form.son_kullanma_tarihi(class="form-control", placeholder="MM/YY", **{'aria-required': 'true', 'aria-describedby': 'son_kullanma_tarihi_error'}) }}
+                {% if form.son_kullanma_tarihi.errors %}
+                    <div id="son_kullanma_tarihi_error" class="invalid-feedback">
+                        {% for error in form.son_kullanma_tarihi.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                <label for="cvv" class="form-label">CVV <span class="text-danger">*</span></label>
+                {{ form.cvv(class="form-control", placeholder="3 haneli CVV kodu", **{'aria-required': 'true', 'aria-describedby': 'cvv_error'}) }}
+                {% if form.cvv.errors %}
+                    <div id="cvv_error" class="invalid-feedback">
+                        {% for error in form.cvv.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
             {{ form.submit(class="btn btn-adopen") }}
         </form>
         <a href="{{ url_for('siparisler') }}" class="btn btn-secondary btn-adopen mt-2">Geri Dön</a>
         <h2 class="mt-5">Ödeme Geçmişi</h2>
-        <table class="table table-striped">
+        <table class="table table-striped" aria-label="Ödeme geçmişi tablosu">
             <thead>
                 <tr>
-                    <th>Tarih</th>
-                    <th>Sipariş ID</th>
-                    <th>Tutar (TL)</th>
+                    <th scope="col">Tarih</th>
+                    <th scope="col">Sipariş ID</th>
+                    <th scope="col">Tutar (TL)</th>
                 </tr>
             </thead>
             <tbody>
@@ -64,19 +97,19 @@
                             {% set id_tutar = islem_parts[1].split(', Tutar ') %}
                             {% if id_tutar|length > 1 %}
                                 <tr>
-                                    <td>{{ odeme.tarih }}</td>
+                                    <td>{{ odeme.tarih.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                                     <td>{{ id_tutar[0] }}</td>
                                     <td>{{ id_tutar[1].split(' TL')[0] }}</td>
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td>{{ odeme.tarih }}</td>
+                                    <td>{{ odeme.tarih.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                                     <td colspan="2">Geçersiz işlem formatı: {{ odeme.islem }}</td>
                                 </tr>
                             {% endif %}
                         {% else %}
                             <tr>
-                                <td>{{ odeme.tarih }}</td>
+                                <td>{{ odeme.tarih.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                                 <td colspan="2">Geçersiz işlem formatı: {{ odeme.islem }}</td>
                             </tr>
                         {% endif %}
@@ -90,5 +123,26 @@
         </table>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Form doğrulama için Bootstrap
+        (function () {
+            'use strict';
+            const forms = document.querySelectorAll('.needs-validation');
+            Array.from(forms).forEach(form => {
+                form.addEventListener('submit', event => {
+                    if (!form.checkValidity()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                    form.classList.add('was-validated');
+                }, false);
+            });
+        })();
+        // Kart numarası için otomatik biçimlendirme
+        document.getElementById('kart_numarasi').addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            e.target.value = value.replace(/(.{4})/g, '$1 ').trim();
+        });
+    </script>
 </body>
 </html>

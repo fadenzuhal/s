@@ -640,159 +640,98 @@ def iptal_talep(siparis_id):
         logger.error(f"İptal talebi hatası: {str(e)}")
         return redirect(url_for('siparisler'))
 
-@app.route('/odeme', methods=['GET', 'POST'])
+
+@app.route('/odeme/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
-def odeme():
+def odeme(siparis_id):
     if current_user.rol != 'alici':
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
 
     form = OdemeForm()
-    odeme_gecmisi = []
-
     try:
-        # Ödeme geçmişi için ayrı bağlantı
         with get_db_connection() as connection:
-            cursor = connection.cursor(dictionary=True, buffered=True)  # Buffered cursor
-            cursor.execute(
-                "SELECT islem, tarih FROM logs WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%' ORDER BY tarih DESC",
-                (current_user.id,)
+            cursor = connection.cursor(dictionary=True)
+
+            # Sipariş bilgilerini al
+            cursor.execute("""
+                           SELECT siparis_id, toplam_fiyat, durum
+                           FROM siparisler
+                           WHERE siparis_id = %s
+                             AND kullanici_id = %s
+                           """, (siparis_id, current_user.id))
+            siparis = cursor.fetchone()
+
+            if not siparis:
+                flash('Sipariş bulunamadı veya size ait değil.', 'danger')
+                return redirect(url_for('siparisler'))
+
+            if siparis['durum'] == 'Ödendi':
+                flash('Bu sipariş zaten ödenmiş.', 'warning')
+                return redirect(url_for('siparisler'))
+
+            # Form verilerini doldur
+            form.siparis_id.data = siparis['siparis_id']
+            form.tutar.data = float(siparis['toplam_fiyat'] or 0.00)
+
+            # Ödeme geçmişi (logs tablosundan)
+            cursor.execute("""
+                           SELECT tarih, islem
+                           FROM logs
+                           WHERE kullanici_id = %s
+                             AND islem LIKE '%Ödeme yapıldı%'
+                           ORDER BY tarih DESC
+                           LIMIT 10
+                           """, (current_user.id,))
+            odeme_gecmisi = cursor.fetchall()
+
+            # Form gönderimi
+            if form.validate_on_submit():
+                kart_numarasi = form.kart_numarasi.data
+                son_kullanma_tarihi = form.son_kullanma_tarihi.data
+                cvv = form.cvv.data
+
+                # Basit kart doğrulama (gerçek uygulamada ödeme ağ geçidi kullanılmalı)
+                if len(kart_numarasi) != 16 or not kart_numarasi.isdigit():
+                    flash('Geçersiz kart numarası. 16 haneli olmalı.', 'danger')
+                elif not son_kullanma_tarihi.match(r'^\d{2}/\d{2}$'):
+                    flash('Son kullanma tarihi MM/YY formatında olmalı.', 'danger')
+                elif len(cvv) != 3 or not cvv.isdigit():
+                    flash('CVV 3 haneli olmalı.', 'danger')
+                else:
+                    # Sipariş durumunu güncelle
+                    cursor.execute("""
+                                   UPDATE siparisler
+                                   SET durum             = 'Ödendi',
+                                       guncel_durum      = 'Ödendi',
+                                       guncelleme_tarihi = %s
+                                   WHERE siparis_id = %s
+                                   """, (datetime.now(), siparis_id))
+
+                    # Ödeme kaydını logs tablosuna ekle
+                    islem = f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']} TL"
+                    cursor.execute("""
+                                   INSERT INTO logs (kullanici_id, islem, tarih)
+                                   VALUES (%s, %s, %s)
+                                   """, (current_user.id, islem, datetime.now()))
+
+                    connection.commit()
+                    flash('Ödeme başarıyla tamamlandı!', 'success')
+                    return redirect(url_for('siparisler'))
+
+            return render_template(
+                'odeme.html',
+                form=form,
+                odeme_gecmisi=odeme_gecmisi
             )
-            odeme_gecmisi = [
-                {
-                    'tarih': row['tarih'].strftime('%Y-%m-%d %H:%M:%S') if row['tarih'] else '-',
-                    'islem': row['islem'],
-                    'siparis_id': row['islem'].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[
-                        'islem'] else '-',
-                    'tutar': row['islem'].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row['islem'] else '-'
-                } for row in cursor.fetchall()
-            ]
 
-        # GET isteği: Ödeme formunu göster
-        if request.method == 'GET':
-            siparis_id = request.args.get('siparis_id', type=int)
-            if not siparis_id:
-                flash('Sipariş ID belirtilmedi.', 'danger')
-                return redirect(url_for('siparisler'))
-
-            with get_db_connection() as connection:
-                cursor = connection.cursor(dictionary=True, buffered=True)
-                cursor.execute(
-                    "SELECT urun_id, miktar, durum, satici_id FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
-                    (siparis_id, current_user.id)
-                )
-                siparis = cursor.fetchone()
-                if not siparis:
-                    flash('Sipariş bulunamadı veya size ait değil!', 'danger')
-                    return redirect(url_for('siparisler'))
-
-                if siparis['durum'] != 'Bekliyor':
-                    flash(f'Sipariş zaten işlenmiş! Durum: {siparis["durum"]}', 'danger')
-                    return redirect(url_for('siparisler'))
-
-                cursor.execute("SELECT cari_fiyat, urun_adi FROM urunler WHERE urun_id = %s", (siparis['urun_id'],))
-                urun = cursor.fetchone()
-                if not urun:
-                    flash('Ürün fiyatı bulunamadı!', 'danger')
-                    return redirect(url_for('siparisler'))
-
-                form.siparis_id.data = siparis_id
-                form.tutar.data = round(float(urun['cari_fiyat'] or 0.0) * siparis['miktar'], 2)
-                return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
-        # POST isteği: Ödeme işlemini gerçekleştir
-        if form.validate_on_submit():
-            with get_db_connection() as connection:
-                cursor = connection.cursor(dictionary=True, buffered=True)
-                siparis_id, tutar = form.siparis_id.data, form.tutar.data
-
-                # Kullanıcı bakiyesini kontrol et
-                cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
-                mevcut_bakiye = float(cursor.fetchone()['bakiye'] or 0.00)
-                if mevcut_bakiye < tutar:
-                    flash(f'Yetersiz bakiye! Gerekli: {tutar} TL, Mevcut: {mevcut_bakiye} TL', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
-                # Sipariş detaylarını kontrol et
-                cursor.execute(
-                    "SELECT urun_id, miktar, durum, satici_id FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
-                    (siparis_id, current_user.id)
-                )
-                siparis = cursor.fetchone()
-                if not siparis or siparis['durum'] != 'Bekliyor':
-                    flash('Sipariş bulunamadı veya işlenmiş!', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
-                # Ürün fiyatını kontrol et
-                cursor.execute("SELECT cari_fiyat, urun_adi FROM urunler WHERE urun_id = %s", (siparis['urun_id'],))
-                urun = cursor.fetchone()
-                if not urun or abs(float(urun['cari_fiyat'] or 0.0) * siparis['miktar'] - tutar) > 0.01:
-                    flash('Ödenen tutar cari fiyat ile uyuşmuyor!', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
-                # Satıcı bilgilerini al
-                cursor.execute("SELECT email, ad FROM saticilar WHERE satici_id = %s", (siparis['satici_id'],))
-                satici = cursor.fetchone()
-
-                # Veritabanı işlemlerini gerçekleştir
-                cursor.execute("START TRANSACTION")
-                yeni_bakiye = Decimal(str(mevcut_bakiye - tutar)).quantize(Decimal('0.01'))
-                cursor.execute(
-                    "UPDATE kullanicilar SET bakiye = %s WHERE kullanici_id = %s",
-                    (float(yeni_bakiye), current_user.id)
-                )
-                cursor.execute(
-                    "UPDATE siparisler SET durum = 'Onaylandı' WHERE siparis_id = %s",
-                    (siparis_id,)
-                )
-                cursor.execute(
-                    "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                    (current_user.id, f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {tutar:.2f} TL", datetime.now())
-                )
-                connection.commit()
-
-                # Satıcıya e-posta bildirimi
-                if satici:
-                    email_body = f"""
-                    <h3>Merhaba {satici['ad']},</h3>
-                    <p>Sipariş ID {siparis_id} için ödeme yapıldı:</p>
-                    <ul>
-                        <li><strong>Ürün:</strong> {urun['urun_adi']}</li>
-                        <li><strong>Miktar:</strong> {siparis['miktar']}</li>
-                        <li><strong>Tutar:</strong> {tutar:.2f} TL</li>
-                        <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
-                    </ul>
-                    <p>Adopen Ekibi</p>
-                    """
-                    send_email(satici['email'], "Adopen - Ödeme Bildirimi", email_body)
-
-                # Alıcıya e-posta bildirimi
-                email_body_alici = f"""
-                <h3>Merhaba {current_user.ad},</h3>
-                <p>Ödemeniz başarıyla alındı:</p>
-                <ul>
-                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
-                    <li><strong>Ürün:</strong> {urun['urun_adi']}</li>
-                    <li><strong>Tutar:</strong> {tutar:.2f} TL</li>
-                    <li><strong>Kalan Bakiye:</strong> {yeni_bakiye:.2f} TL</li>
-                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
-                </ul>
-                <p>Adopen Ekibi</p>
-                """
-                send_email(current_user.email, "Adopen - Ödeme Onayı", email_body_alici)
-
-                flash(f'Ödeme başarılı! Kalan bakiye: {yeni_bakiye:.2f} TL', 'success')
-                return redirect(url_for('siparisler'))
-
-    except mysql.connector.Error as db_err:
-        flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
-        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
     except Exception as e:
-        flash(f"Ödeme hatası: {str(e)}", 'danger')
-        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
-    # GET isteği için varsayılan dönüş (siparis_id yoksa)
-    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
+        flash(f'Hata: {str(e)}', 'danger')
+        return render_template(
+            'odeme.html',
+            form=form,
+            odeme_gecmisi=[]
+        )
 def get_adopen_pvc_products():
     url = "https://www.adopen.com.tr/pvc-pencere-sistemleri"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
