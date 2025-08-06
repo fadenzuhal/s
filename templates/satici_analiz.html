@@ -3,28 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Satıcı Dashboard - Adopen</title>
+    <title>Satıcı Analiz - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
     <style>
-        .dark-card { background-color: #2c3e50; color: white; border-radius: 10px; }
-        .stock-alert { background-color: #ffe5e5; color: #dc3545; padding: 10px; border-radius: 8px; }
+        .dark-card { background-color: var(--card-bg-dark); color: var(--text-color-dark); border-radius: 10px; }
+        .stock-alert { background-color: #ffe5e5; color: var(--danger-color); padding: 10px; border-radius: 8px; }
+        .profile-img { max-width: 150px; border-radius: 50%; border: 2px solid var(--primary-color); }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <button id="theme-toggle" aria-label="Tema değiştir">🌙 Karanlık Tema</button>
+
     <div class="container py-4">
-        <h2 class="mb-4 text-center">Satıcı Dashboard</h2>
+        <h2 class="mb-4 text-center">Hoş Geldiniz, {{ current_user.ad }}!</h2>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
                         {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
+
+        <!-- Profil Güncelleme -->
+        <div class="card dark-card mb-4">
+            <div class="card-body">
+                <h4 class="card-title">Profil Güncelle</h4>
+                <form method="POST" class="needs-validation" novalidate enctype="multipart/form-data">
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3 text-center">
+                        {% if current_user.profil_fotografi %}
+                            <img src="{{ url_for('static', filename=current_user.profil_fotografi) }}" alt="Profil Fotoğrafı" class="profile-img mb-3">
+                        {% else %}
+                            <p class="text-muted">Profil fotoğrafınız yok.</p>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="ad" class="form-label">Ad <span class="text-danger">*</span></label>
+                        {{ form.ad(class="form-control", required=true, **{'aria-describedby': 'ad_error'}) }}
+                        {% if form.ad.errors %}
+                            <div id="ad_error" class="invalid-feedback">
+                                {% for error in form.ad.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="sifre" class="form-label">Yeni Şifre</label>
+                        {{ form.sifre(class="form-control", **{'aria-describedby': 'sifre_error'}) }}
+                        {% if form.sifre.errors %}
+                            <div id="sifre_error" class="invalid-feedback">
+                                {% for error in form.sifre.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="profil_fotografi" class="form-label">Profil Fotoğrafı</label>
+                        {{ form.profil_fotografi(class="form-control", **{'aria-describedby': 'profil_fotografi_error'}) }}
+                        {% if form.profil_fotografi.errors %}
+                            <div id="profil_fotografi_error" class="invalid-feedback">
+                                {% for error in form.profil_fotografi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        {{ form.submit(class="btn btn-adopen") }}
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <!-- Satış İstatistikleri -->
         <div class="row g-4 mb-4">
@@ -32,7 +88,7 @@
                 <div class="card dark-card">
                     <div class="card-body">
                         <h5>Satış İstatistikleri</h5>
-                        <table class="table table-dark">
+                        <table class="table table-dark" aria-label="Satış İstatistikleri">
                             <thead>
                                 <tr>
                                     <th>Satıcı</th>
@@ -59,7 +115,7 @@
                 <div class="card dark-card">
                     <div class="card-body">
                         <h5>Hata Türleri</h5>
-                        <canvas id="hataChart"></canvas>
+                        <canvas id="hataChart" aria-label="Hata Türleri Grafiği"></canvas>
                     </div>
                 </div>
             </div>
@@ -71,7 +127,7 @@
                 <div class="card dark-card">
                     <div class="card-body">
                         <h5>Günlük Sipariş Sayıları</h5>
-                        <canvas id="gunlukSatisChart"></canvas>
+                        <canvas id="gunlukSatisChart" aria-label="Günlük Sipariş Sayıları Grafiği"></canvas>
                     </div>
                 </div>
             </div>
@@ -79,7 +135,7 @@
                 <div class="card dark-card">
                     <div class="card-body">
                         <h5>Aylık Sipariş Sayıları</h5>
-                        <canvas id="aylikSatisChart"></canvas>
+                        <canvas id="aylikSatisChart" aria-label="Aylık Sipariş Sayıları Grafiği"></canvas>
                     </div>
                 </div>
             </div>
@@ -105,9 +161,50 @@
     </div>
 
     <script>
+        // Tema değiştirme entegrasyonu
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleButton = document.getElementById('theme-toggle');
+            const body = document.body;
+
+            if (localStorage.getItem('theme') === 'dark') {
+                body.classList.add('dark-theme');
+                toggleButton.textContent = '☀️ Açık Tema';
+            } else {
+                toggleButton.textContent = '🌙 Karanlık Tema';
+            }
+
+            toggleButton.addEventListener('click', () => {
+                body.classList.toggle('dark-theme');
+                if (body.classList.contains('dark-theme')) {
+                    localStorage.setItem('theme', 'dark');
+                    toggleButton.textContent = '☀️ Açık Tema';
+                } else {
+                    localStorage.setItem('theme', 'light');
+                    toggleButton.textContent = '🌙 Karanlık Tema';
+                }
+                updateChartColors();
+            });
+
+            function updateChartColors() {
+                const textColor = body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+                [hataChart, gunlukSatisChart, aylikSatisChart].forEach(chart => {
+                    if (chart) {
+                        chart.options.scales = chart.options.scales || {};
+                        chart.options.scales.y = chart.options.scales.y || {};
+                        chart.options.scales.y.ticks = chart.options.scales.y.ticks || {};
+                        chart.options.scales.y.ticks.color = textColor;
+                        chart.options.scales.x = chart.options.scales.x || {};
+                        chart.options.scales.x.ticks = chart.options.scales.x.ticks || {};
+                        chart.options.scales.x.ticks.color = textColor;
+                        chart.update();
+                    }
+                });
+            }
+        });
+
         // Hata Türleri Grafiği
         const hataCtx = document.getElementById('hataChart').getContext('2d');
-        new Chart(hataCtx, {
+        const hataChart = new Chart(hataCtx, {
             type: 'pie',
             data: {
                 labels: {{ hata_turleri_labels|tojson }},
@@ -124,7 +221,7 @@
 
         // Günlük Sipariş Sayıları Grafiği
         const gunlukCtx = document.getElementById('gunlukSatisChart').getContext('2d');
-        new Chart(gunlukCtx, {
+        const gunlukSatisChart = new Chart(gunlukCtx, {
             type: 'bar',
             data: {
                 labels: {{ gunluk_satis_labels|tojson }},
@@ -147,7 +244,7 @@
 
         // Aylık Sipariş Sayıları Grafiği
         const aylikCtx = document.getElementById('aylikSatisChart').getContext('2d');
-        new Chart(aylikCtx, {
+        const aylikSatisChart = new Chart(aylikCtx, {
             type: 'bar',
             data: {
                 labels: {{ aylik_satis_labels|tojson }},

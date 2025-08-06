@@ -10,12 +10,17 @@
         .dashboard-card { border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .bg-gradient-primary { background: linear-gradient(45deg, #007bff, #00d4ff); color: white; }
         .product-suggestion { background-color: #f8f9fa; padding: 15px; border-radius: 10px; }
+        .dark-card { background-color: var(--card-bg-dark); color: var(--text-color-dark); border-radius: 10px; }
+        .profile-img { max-width: 150px; border-radius: 50%; border: 2px solid var(--primary-color); }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <button id="theme-toggle" aria-label="Tema değiştir">🌙 Karanlık Tema</button>
+
     <div class="container py-4">
         <h2 class="mb-4 text-center">Hoş Geldiniz, {{ current_user.ad }}!</h2>
+        <p><strong>Bakiyeniz:</strong> {{ bakiye|round(2) }} TL</p>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -27,75 +32,67 @@
             {% endif %}
         {% endwith %}
 
-        <!-- Dashboard Kartları -->
-        <div class="row g-4 mb-4">
-            <div class="col-md-4">
-                <div class="card dashboard-card bg-gradient-primary">
-                    <div class="card-body text-center">
-                        <h5>Bakiyeniz</h5>
-                        <h3>{{ "%.2f"|format(bakiye) }} TL</h3>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card dashboard-card bg-gradient-primary">
-                    <div class="card-body text-center">
-                        <h5>Toplam Harcama</h5>
-                        <h3>{{ "%.2f"|format(toplam_harcama) }} TL</h3>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card dashboard-card bg-gradient-primary">
-                    <div class="card-body text-center">
-                        <h5>Sipariş Sayısı</h5>
-                        <h3>{{ siparisler|length }}</h3>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Harcama Grafiği -->
-        <div class="card dashboard-card mb-4">
-            <div class="card-body">
-                <h4 class="card-title">En Çok Sipariş Edilen Ürünler</h4>
-                <canvas id="urunChart"></canvas>
-            </div>
-        </div>
-
-        <!-- Önerilen Ürünler -->
-        <h4 class="mb-3">Önerilen Ürünler</h4>
-        <div class="row g-3">
-            {% for urun in en_cok_siparis_urunler %}
-                <div class="col-md-4">
-                    <div class="product-suggestion">
-                        <h5>{{ urun.urun_adi }}</h5>
-                        <p>Kategori: {{ urun.kategori or 'Bilinmiyor' }}</p>
-                        <p>Fiyat: {{ "%.2f"|format(urun.fiyat or 0.0) }} TL</p>
-                        <a href="{{ url_for('sepet_ekle') }}" class="btn btn-primary btn-sm">Sepete Ekle</a>
-                    </div>
-                </div>
-            {% else %}
-                <p>Henüz önerilen ürün yok.</p>
-            {% endfor %}
-        </div>
-
         <!-- Profil Güncelleme -->
-        <div class="card dashboard-card mt-4">
+        <div class="card dark-card mb-4">
             <div class="card-body">
                 <h4 class="card-title">Profil Güncelle</h4>
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data" class="needs-validation" novalidate>
                     {{ form.hidden_tag() }}
+                    <div class="mb-3 text-center">
+                        {% if current_user.profil_fotografi %}
+                            <img src="{{ url_for('static', filename=current_user.profil_fotografi) }}" alt="Profil Fotoğrafı" class="profile-img mb-3">
+                        {% else %}
+                            <p class="text-muted">Profil fotoğrafınız yok.</p>
+                        {% endif %}
+                    </div>
                     <div class="mb-3">
-                        <label for="ad" class="form-label">Adınız</label>
-                        {{ form.ad(class="form-control") }}
+                        <label for="ad" class="form-label">Ad <span class="text-danger">*</span></label>
+                        {{ form.ad(class="form-control", required=true, **{'aria-required': 'true', 'aria-describedby': 'ad_error'}) }}
+                        {% if form.ad.errors %}
+                            <div id="ad_error" class="invalid-feedback">
+                                {% for error in form.ad.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
                     <div class="mb-3">
                         <label for="sifre" class="form-label">Yeni Şifre</label>
-                        {{ form.sifre(class="form-control") }}
+                        {{ form.sifre(class="form-control", **{'aria-describedby': 'sifre_error'}) }}
+                        {% if form.sifre.errors %}
+                            <div id="sifre_error" class="invalid-feedback">
+                                {% for error in form.sifre.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
-                    {{ form.submit(class="btn btn-primary") }}
+                    <div class="mb-3">
+                        <label for="profil_fotografi" class="form-label">Profil Fotoğrafı</label>
+                        {{ form.profil_fotografi(class="form-control", **{'aria-describedby': 'profil_fotografi_error'}) }}
+                        {% if form.profil_fotografi.errors %}
+                            <div id="profil_fotografi_error" class="invalid-feedback">
+                                {% for error in form.profil_fotografi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex justify-content-end">
+                        {{ form.submit(class="btn btn-adopen") }}
+                    </div>
                 </form>
+            </div>
+        </div>
+        <!-- En Çok Sipariş Edilen Ürünler Grafiği -->
+        <div class="card dashboard-card mb-4">
+            <div class="card-body">
+                <h4 class="card-title">En Çok Sipariş Edilen Ürünler</h4>
+                {% if en_cok_siparis_urunler %}
+                    <canvas id="urunChart" aria-label="En çok sipariş edilen ürünler grafiği"></canvas>
+                {% else %}
+                    <p>Henüz sipariş veriniz yok.</p>
+                {% endif %}
             </div>
         </div>
 
@@ -103,14 +100,50 @@
     </div>
 
     <script>
+        // Tema değiştirme
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggleButton = document.getElementById('theme-toggle');
+            const body = document.body;
+
+            if (localStorage.getItem('theme') === 'dark') {
+                body.classList.add('dark-theme');
+                toggleButton.textContent = '☀️ Açık Tema';
+            } else {
+                toggleButton.textContent = '🌙 Karanlık Tema';
+            }
+
+            toggleButton.addEventListener('click', () => {
+                body.classList.toggle('dark-theme');
+                if (body.classList.contains('dark-theme')) {
+                    localStorage.setItem('theme', 'dark');
+                    toggleButton.textContent = '☀️ Açık Tema';
+                } else {
+                    localStorage.setItem('theme', 'light');
+                    toggleButton.textContent = '🌙 Karanlık Tema';
+                }
+                updateChartColors();
+            });
+
+            function updateChartColors() {
+                const textColor = body.classList.contains('dark-theme') ? '#e0e0e0' : '#333333';
+                if (urunChart) {
+                    urunChart.options.scales.y.ticks.color = textColor;
+                    urunChart.options.scales.x.ticks.color = textColor;
+                    urunChart.update();
+                }
+            }
+        });
+
+        // En Çok Sipariş Edilen Ürünler Grafiği
+        {% if en_cok_siparis_urunler %}
         const ctx = document.getElementById('urunChart').getContext('2d');
-        new Chart(ctx, {
+        const urunChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: {{ cari_fiyat_labels|tojson }},
+                labels: {{ en_cok_siparis_urunler | map(attribute='urun_adi') | list | tojson }},
                 datasets: [{
-                    label: 'Cari Fiyat (TL)',
-                    data: {{ cari_fiyat_data|tojson }},
+                    label: 'Toplam Sipariş Miktarı',
+                    data: {{ en_cok_siparis_urunler | map(attribute='toplam_miktar') | list | tojson }},
                     backgroundColor: 'rgba(0, 123, 255, 0.6)',
                     borderColor: 'rgba(0, 123, 255, 1)',
                     borderWidth: 1
@@ -119,11 +152,14 @@
             options: {
                 responsive: true,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: { beginAtZero: true, title: { display: true, text: 'Sipariş Miktarı' } },
+                    x: { title: { display: true, text: 'Ürün Adı' } }
                 }
             }
         });
+        {% endif %}
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>

@@ -1,67 +1,150 @@
-
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hata Raporu Ekle</title>
+    <title>Hata Raporu Ekle - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
 </head>
 <body>
+    <button id="theme-toggle" aria-label="Tema değiştir">🌙</button>
+
     <div class="container mt-5">
-        <h1>Hata Raporu Ekle</h1>
-        
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="icon-container text-center mb-4">
+                    <img src="{{ url_for('static', filename='adopen_resimler/adopen-logo.png') }}" alt="Adopen Logo" class="img-fluid">
+                </div>
+                <h1 class="text-center mb-4">Hata Raporu Ekle</h1>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" class="needs-validation" novalidate>
+                    {{ form.hidden_tag() }}
+                    <div class="mb-3">
+                        <label for="urun_adi" class="form-label">Ürün Adı <span class="text-danger">*</span></label>
+                        {{ form.urun_adi(class="form-select", required=true, **{'aria-describedby': 'urun_adi_error'}) }}
+                        {% if form.urun_adi.errors %}
+                            <div id="urun_adi_error" class="invalid-feedback">
+                                {% for error in form.urun_adi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        <form method="POST">
-            {{ form.hidden_tag() }}
-            <div class="mb-3">
-                <label for="urun_adi" class="form-label">Ürün Adı</label>
-                {{ form.urun_adi(class="form-select") }}
+                    <div class="mb-3">
+                        <label for="bayi_adi" class="form-label">Bayi Adı <span class="text-danger">*</span></label>
+                        {{ form.bayi_adi(class="form-select", required=true, **{'aria-describedby': 'bayi_adi_error'}) }}
+                        {% if form.bayi_adi.errors %}
+                            <div id="bayi_adi_error" class="invalid-feedback">
+                                {% for error in form.bayi_adi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="alici_adi" class="form-label">Alıcı Adı</label>
+                        {{ form.alici_adi(class="form-select", **{'aria-describedby': 'alici_adi_error'}) }}
+                        {% if form.alici_adi.errors %}
+                            <div id="alici_adi_error" class="invalid-feedback">
+                                {% for error in form.alici_adi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="satici_adi" class="form-label">Satıcı Adı</label>
+                        {{ form.satici_adi(class="form-select", **{'aria-describedby': 'satici_adi_error'}) }}
+                        {% if form.satici_adi.errors %}
+                            <div id="satici_adi_error" class="invalid-feedback">
+                                {% for error in form.satici_adi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="hata_tarihi" class="form-label">Hata Tarihi <span class="text-danger">*</span></label>
+                        {{ form.hata_tarihi(class="form-control", type="date", required=true, **{'aria-describedby': 'hata_tarihi_error'}) }}
+                        {% if form.hata_tarihi.errors %}
+                            <div id="hata_tarihi_error" class="invalid-feedback">
+                                {% for error in form.hata_tarihi.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="hata_turu" class="form-label">Hata Türü <span class="text-danger">*</span></label>
+                        {{ form.hata_turu(class="form-control", required=true, **{'aria-describedby': 'hata_turu_error'}) }}
+                        {% if form.hata_turu.errors %}
+                            <div id="hata_turu_error" class="invalid-feedback">
+                                {% for error in form.hata_turu.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="aciklama" class="form-label">Açıklama</label>
+                        {{ form.aciklama(class="form-control", rows=4, **{'aria-describedby': 'aciklama_error'}) }}
+                        {% if form.aciklama.errors %}
+                            <div id="aciklama_error" class="invalid-feedback">
+                                {% for error in form.aciklama.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="durum" class="form-label">Durum <span class="text-danger">*</span></label>
+                        {{ form.durum(class="form-select", required=true, **{'aria-describedby': 'durum_error'}) }}
+                        {% if form.durum.errors %}
+                            <div id="durum_error" class="invalid-feedback">
+                                {% for error in form.durum.errors %}
+                                    {{ error }}<br>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        {{ form.submit(class="btn btn-adopen") }}
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">Geri Dön</a>
+                    </div>
+                </form>
             </div>
-            <div class="mb-3">
-                <label for="bayi_adi" class="form-label">Bayi Adı</label>
-                {{ form.bayi_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="alici_adi" class="form-label">Alıcı Adı</label>
-                {{ form.alici_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="satici_adi" class="form-label">Satıcı Adı</label>
-                {{ form.satici_adi(class="form-select") }}
-            </div>
-            <div class="mb-3">
-                <label for="hata_tarihi" class="form-label">Hata Tarihi</label>
-                {{ form.hata_tarihi(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="hata_turu" class="form-label">Hata Türü</label>
-                {{ form.hata_turu(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="aciklama" class="form-label">Açıklama</label>
-                {{ form.aciklama(class="form-control") }}
-            </div>
-            <div class="mb-3">
-                <label for="durum" class="form-label">Durum</label>
-                {{ form.durum(class="form-select") }}
-            </div>
-            {{ form.submit(class="btn btn-primary") }}
-        </form>
-        
-        <a href="{{ url_for('index') }}" class="btn btn-secondary mt-3">Geri Dön</a>
+        </div>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+    <script>
+        // Bootstrap form doğrulama
+        (function () {
+            'use strict';
+            const forms = document.querySelectorAll('.needs-validation');
+            Array.from(forms).forEach(form => {
+                form.addEventListener('submit', event => {
+                    if (!form.checkValidity()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                    form.classList.add('was-validated');
+                }, false);
+            });
+        })();
+    </script>
 </body>
 </html>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">

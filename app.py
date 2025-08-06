@@ -5,6 +5,8 @@ from decimal import Decimal
 import mysql.connector
 import requests,os
 from bs4 import BeautifulSoup
+from werkzeug.utils import secure_filename
+
 from config.db_config import  get_dropdown_choices
 from models.ContactForm import ContactForm
 from models.DurumGuncelleForm import DurumGuncelleForm
@@ -15,7 +17,7 @@ from models.ProfilGuncelleForm import ProfilGuncelleForm
 from models.SepetForm import SepetForm
 from models.UrunForm import UrunForm
 from models.User import User
-from flask import Flask, flash, redirect, render_template, url_for,request
+from flask import Flask, flash, redirect, render_template, url_for, request, current_app
 from flask_login import LoginManager, login_required, current_user
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
@@ -32,6 +34,7 @@ app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('EMAIL_ADDRESS')
 app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_ADDRESS')
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
 # Flask-Mail başlatma
 mail = Mail(app)
 # Flask-Login ayarları
@@ -52,18 +55,27 @@ def send_email(to, subject, body):
 
 
 @login_manager.user_loader
-def load_user(kullanici_id):
+def load_user(user_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT kullanici_id, email, ad, rol FROM kullanicilar WHERE kullanici_id = %s", (kullanici_id,))
-            user = cursor.fetchone()
-            return User(user['kullanici_id'], user['email'], user['ad'], user['rol']) if user else None
+            cursor.execute(
+                "SELECT kullanici_id, ad, email, rol, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s",
+                (user_id,)
+            )
+            user_data = cursor.fetchone()
+            if user_data:
+                return User(
+                    id=user_data['kullanici_id'],
+                    ad=user_data['ad'],
+                    email=user_data['email'],
+                    rol=user_data['rol'],
+                    profil_fotografi=user_data['profil_fotografi']
+                )
+            return None
     except Exception as e:
+        print(f"Kullanıcı yükleme hatası: {str(e)}")
         return None
-
-# Dropdown seçenekleri
-
 
 def __init__(self, *args, **kwargs):
         super(HataForm, self).__init__(*args, **kwargs)
@@ -1155,168 +1167,204 @@ def talep_reddet(talep_id):
         flash(f"Talep reddetme hatası: {str(e)}", 'danger')
         logger.error(f"Talep reddetme hatası: {str(e)}")
         return redirect(url_for('siparisler'))
-@app.route('/satici_analiz')
+
+
+@app.route('/satici_analiz', methods=['GET', 'POST'])
 @login_required
 def satici_analiz():
     if current_user.rol != 'satici':
         flash('Bu sayfaya yalnızca satıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
+
+    form = ProfilGuncelleForm()
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
+
+            if form.validate_on_submit():
+                ad = form.ad.data
+                sifre = form.sifre.data if form.sifre.data else None
+                profil_fotografi = form.profil_fotografi.data
+
+                # Profil fotoğrafı işlemleri
+                profil_fotografi_yolu = getattr(current_user, 'profil_fotografi', None)
+                if profil_fotografi:
+                    filename = secure_filename(profil_fotografi.filename)
+                    upload_folder = os.path.join(current_app.root_path, 'static/uploads')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    profil_fotografi.save(os.path.join(upload_folder, filename))
+                    profil_fotografi_yolu = f'uploads/{filename}'
+
+                # Veritabanını güncelle
+                cursor.execute("""
+                               UPDATE kullanicilar
+                               SET ad               = %s,
+                                   sifre            = COALESCE(%s, sifre),
+                                   profil_fotografi = %s
+                               WHERE kullanici_id = %s
+                               """, (ad, sifre, profil_fotografi_yolu, current_user.id))
+                connection.commit()
+                current_user.ad = ad
+                current_user.profil_fotografi = profil_fotografi_yolu
+                flash('Profil bilgileriniz başarıyla güncellendi!', 'success')
+                return redirect(url_for('satici_analiz'))
+
+            # Mevcut verileri çek
+            cursor.execute("SELECT ad, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
+            user_data = cursor.fetchone()
+            form.ad.data = user_data['ad']
+            current_user.profil_fotografi = user_data['profil_fotografi']
+
             # Satıcı sipariş istatistikleri
             cursor.execute("""
-                SELECT s.ad, COUNT(p.siparis_id) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar
-                FROM saticilar s LEFT JOIN siparisler p ON s.satici_id = p.satici_id
-                GROUP BY s.ad ORDER BY toplam_miktar DESC
-            """)
+                           SELECT s.ad, COUNT(p.siparis_id) AS siparis_sayisi, SUM(p.miktar) AS toplam_miktar
+                           FROM saticilar s
+                                    LEFT JOIN siparisler p ON s.satici_id = p.satici_id
+                           GROUP BY s.ad
+                           ORDER BY toplam_miktar DESC
+                           """)
             satici_siparisler = cursor.fetchall()
             satici_siparis_labels = [row['ad'] for row in satici_siparisler]
             satici_siparis_data = [row['toplam_miktar'] or 0 for row in satici_siparisler]
+
             # Hata türleri
-            cursor.execute("SELECT hata_turu, COUNT(*) AS hata_sayisi FROM hatalar GROUP BY hata_turu ORDER BY hata_sayisi DESC")
+            cursor.execute(
+                "SELECT hata_turu, COUNT(*) AS hata_sayisi FROM hatalar GROUP BY hata_turu ORDER BY hata_sayisi DESC")
             hata_turleri = cursor.fetchall()
             hata_turleri_labels = [row['hata_turu'] for row in hata_turleri]
             hata_turleri_data = [row['hata_sayisi'] for row in hata_turleri]
+
             # Günlük satışlar
-            cursor.execute("SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi FROM siparisler GROUP BY DATE(siparis_tarihi) ORDER BY gun")
+            cursor.execute(
+                "SELECT DATE(siparis_tarihi) AS gun, COUNT(*) AS siparis_sayisi FROM siparisler GROUP BY DATE(siparis_tarihi) ORDER BY gun")
             gunluk_satislar = cursor.fetchall()
             gunluk_satis_labels = [row['gun'].strftime('%Y-%m-%d') if row['gun'] else '' for row in gunluk_satislar]
             gunluk_satis_data = [row['siparis_sayisi'] for row in gunluk_satislar]
+
             # Aylık satışlar
-            cursor.execute("SELECT DATE_FORMAT(siparis_tarihi, '%Y-%m') AS ay, COUNT(*) AS siparis_sayisi FROM siparisler GROUP BY ay ORDER BY ay")
+            cursor.execute(
+                "SELECT DATE_FORMAT(siparis_tarihi, '%Y-%m') AS ay, COUNT(*) AS siparis_sayisi FROM siparisler GROUP BY ay ORDER BY ay")
             aylik_satislar = cursor.fetchall()
             aylik_satis_labels = [row['ay'] for row in aylik_satislar]
             aylik_satis_data = [row['siparis_sayisi'] for row in aylik_satislar]
+
             # Ürünler
-            cursor.execute("SELECT urun_adi, stok, cari_fiyat FROM urunler")
+            cursor.execute("SELECT urun_adi, stok, cari_fiyat, urun_id FROM urunler")
             urunler = [
                 {
                     'urun_adi': row['urun_adi'],
                     'stok': row['stok'],
                     'cari_fiyat': float(row['cari_fiyat'] or 0.0),
-                    'urun_id': row.get('urun_id', 0)  # urun_id eklendi
+                    'urun_id': row['urun_id']
                 } for row in cursor.fetchall()
             ]
+
             return render_template('satici_analiz.html',
-                                  satici_siparisler=satici_siparisler,
-                                  hata_turleri=hata_turleri,
-                                  gunluk_satislar=gunluk_satislar,
-                                  satici_siparis_labels=satici_siparis_labels,
-                                  satici_siparis_data=satici_siparis_data,
-                                  gunluk_satis_labels=gunluk_satis_labels,
-                                  gunluk_satis_data=gunluk_satis_data,
-                                  aylik_satis_labels=aylik_satis_labels,
-                                  aylik_satis_data=aylik_satis_data,
-                                  hata_turleri_labels=hata_turleri_labels,
-                                  hata_turleri_data=hata_turleri_data,
-                                  urunler=urunler)
+                                   form=form,
+                                   satici_siparisler=satici_siparisler,
+                                   hata_turleri=hata_turleri,
+                                   gunluk_satislar=gunluk_satislar,
+                                   satici_siparis_labels=satici_siparis_labels,
+                                   satici_siparis_data=satici_siparis_data,
+                                   gunluk_satis_labels=gunluk_satis_labels,
+                                   gunluk_satis_data=gunluk_satis_data,
+                                   aylik_satis_labels=aylik_satis_labels,
+                                   aylik_satis_data=aylik_satis_data,
+                                   hata_turleri_labels=hata_turleri_labels,
+                                   hata_turleri_data=hata_turleri_data,
+                                   urunler=urunler)
     except Exception as e:
         flash(f"Satıcı analiz hatası: {str(e)}", 'danger')
         return render_template('satici_analiz.html',
-                              satici_siparisler=[],
-                              hata_turleri=[],
-                              gunluk_satislar=[],
-                              satici_siparis_labels=[],
-                              satici_siparis_data=[],
-                              gunluk_satis_labels=[],
-                              gunluk_satis_data=[],
-                              aylik_satis_labels=[],
-                              aylik_satis_data=[],
-                              hata_turleri_labels=[],
-                              hata_turleri_data=[],
-                              urunler=[])
-
+                               form=form,
+                               satici_siparisler=[],
+                               hata_turleri=[],
+                               gunluk_satislar=[],
+                               satici_siparis_labels=[],
+                               satici_siparis_data=[],
+                               gunluk_satis_labels=[],
+                               gunluk_satis_data=[],
+                               aylik_satis_labels=[],
+                               aylik_satis_data=[],
+                               hata_turleri_labels=[],
+                               hata_turleri_data=[],
+                               urunler=[])
 @app.route('/alicilar_analiz', methods=['GET', 'POST'])
 @login_required
 def alicilar_analiz():
     if current_user.rol != 'alici':
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
         return redirect(url_for('index'))
+
     form = ProfilGuncelleForm()
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            if form.validate_on_submit():
-                sifre = form.sifre.data if form.sifre.data else None
-                cursor.execute("UPDATE kullanicilar SET ad = %s, sifre = COALESCE(%s, sifre) WHERE kullanici_id = %s",
-                              (form.ad.data, sifre, current_user.id))
-                connection.commit()
-                flash('Profil bilgileriniz başarıyla güncellendi!', 'success')
-                return redirect(url_for('alicilar_analiz'))
-            # Siparişler
-            cursor.execute("""
-                SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, u.cari_fiyat AS fiyat
-                FROM siparisler s JOIN urunler u ON s.urun_id = u.urun_id
-                WHERE s.kullanici_id = %s AND s.durum = 'Onaylandı'
-                ORDER BY s.siparis_tarihi DESC
-            """, (current_user.id,))
-            siparisler = [
-                {
-                    'siparis_id': row['siparis_id'],
-                    'urun_adi': row['urun_adi'],
-                    'miktar': row['miktar'],
-                    'siparis_tarihi': row['siparis_tarihi'].strftime('%Y-%m-%d') if row['siparis_tarihi'] else '-',
-                    'durum': row['durum'],
-                    'toplam_fiyat': float(row['fiyat'] or 0.0) * row['miktar']
-                } for row in cursor.fetchall()
-            ]
-            toplam_harcama = sum(siparis['toplam_fiyat'] for siparis in siparisler)
+
             # En çok sipariş edilen ürünler
             cursor.execute("""
-                SELECT u.urun_adi, u.kategori, u.cari_fiyat, SUM(s.miktar) AS toplam_miktar
-                FROM siparisler s JOIN urunler u ON s.urun_id = u.urun_id
-                WHERE s.kullanici_id = %s AND s.durum = 'Onaylandı'
-                GROUP BY u.urun_adi, u.kategori, u.cari_fiyat
-                ORDER BY toplam_miktar DESC LIMIT 5
+                SELECT u.urun_adi, SUM(s.miktar) as toplam_miktar
+                FROM siparisler s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                WHERE s.kullanici_id = %s
+                GROUP BY u.urun_id, u.urun_adi
+                ORDER BY toplam_miktar DESC
+                LIMIT 5
             """, (current_user.id,))
-            en_cok_siparis_urunler = [
-                {
-                    'urun_adi': row['urun_adi'],
-                    'kategori': row['kategori'],
-                    'fiyat': float(row['cari_fiyat'] or 0.0),
-                    'toplam_miktar': int(row['toplam_miktar'] or 0)
-                } for row in cursor.fetchall()
-            ]
-            # Cari fiyat grafiği için veriler
-            cursor.execute("SELECT urun_adi, cari_fiyat FROM urunler WHERE cari_fiyat IS NOT NULL")
-            cari_fiyat_verileri = cursor.fetchall()
-            cari_fiyat_labels = [row['urun_adi'] for row in cari_fiyat_verileri]
-            cari_fiyat_data = [float(row['cari_fiyat'] or 0.0) for row in cari_fiyat_verileri]
-            # Bakiye
+            en_cok_siparis_urunler = cursor.fetchall()
+
+            # Kullanıcı bakiyesi
             cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
             bakiye = float(cursor.fetchone()['bakiye'] or 0.00)
-            # Ürünler
-            cursor.execute("SELECT urun_adi, kategori, cari_fiyat FROM urunler")
-            urunler = [
-                {
-                    'urun_adi': row['urun_adi'],
-                    'kategori': row['kategori'],
-                    'fiyat': float(row['cari_fiyat'] or 0.0)
-                } for row in cursor.fetchall()
-            ]
-            return render_template('alicilar_analiz.html',
-                                  form=form,
-                                  siparisler=siparisler,
-                                  urunler=urunler,
-                                  bakiye=bakiye,
-                                  toplam_harcama=toplam_harcama,
-                                  en_cok_siparis_urunler=en_cok_siparis_urunler,
-                                  cari_fiyat_labels=cari_fiyat_labels,
-                                  cari_fiyat_data=cari_fiyat_data)
+
+
+
+            # Profil güncelleme
+            if form.validate_on_submit():
+                ad = form.ad.data
+                sifre = form.sifre.data
+                profil_fotografi = form.profil_fotografi.data
+                update_query = "UPDATE kullanicilar SET ad = %s"
+                update_params = [ad]
+
+                if sifre:
+                    update_query += ", sifre = %s"
+                    update_params.append(sifre)  # Şifre düz metin olarak kaydediliyor
+
+                if profil_fotografi and allowed_file(profil_fotografi.filename):
+                    filename = secure_filename(profil_fotografi.filename)
+                    profil_fotografi.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    update_query += ", profil_fotografi = %s"
+                    update_params.append(f"uploads/{filename}")
+
+                update_query += " WHERE kullanici_id = %s"
+                update_params.append(current_user.id)
+
+                cursor.execute(update_query, update_params)
+                connection.commit()
+                flash('Profil başarıyla güncellendi!', 'success')
+                return redirect(url_for('alicilar_analiz'))
+
+            return render_template(
+                'alicilar_analiz.html',
+                form=form,
+                en_cok_siparis_urunler=en_cok_siparis_urunler,
+                bakiye=bakiye,
+
+            )
+
     except Exception as e:
-        flash(f"Alıcı analiz hatası: {str(e)}", 'danger')
-        return render_template('alicilar_analiz.html',
-                              form=form,
-                              siparisler=[],
-                              urunler=[],
-                              bakiye=0.00,
-                              toplam_harcama=0.00,
-                              en_cok_siparis_urunler=[],
-                              cari_fiyat_labels=[],
-                              cari_fiyat_data=[])
+        flash(f"Hata: {str(e)}", 'danger')
+        return render_template(
+            'alicilar_analiz.html',
+            form=form,
+            en_cok_siparis_urunler=[],
+            bakiye=0.00,
+            odeme_gecmisi=[]
+        )
 
-
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
 @app.route('/admin_kullanicilar')
 @login_required
 def admin_kullanicilar():
