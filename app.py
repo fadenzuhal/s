@@ -279,43 +279,55 @@ def hata_sil(hata_id):
     except Exception as e:
         flash(f"Hata oluştu: {str(e)}", 'danger')
         return redirect(url_for('index'))
-@app.route('/sepet_ekle', methods=['GET', 'POST'])
+@app.route('/sepet_ekle', methods=['POST'])
 @login_required
 def sepet_ekle():
-    form = SepetForm()
-    if form.validate_on_submit():
-        try:
-            with get_db_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute("SELECT urun_adi, stok, fiyat FROM urunler WHERE urun_id = %s", (form.urun_adi.data,))
-                urun = cursor.fetchone()
-                if not urun:
-                    flash('Ürün bulunamadı.', 'danger')
-                    return render_template('sepet_ekle.html', form=form)
-                if urun['stok'] <= 0:
-                    flash(f'{urun["urun_adi"]} için stok bulunmamaktadır.', 'danger')
-                    return render_template('sepet_ekle.html', form=form)
-                if urun['stok'] < form.miktar.data:
-                    flash(f'{urun["urun_adi"]} için yeterli stok yok. Mevcut stok: {urun["stok"]}', 'danger')
-                    return render_template('sepet_ekle.html', form=form)
-                if urun['stok'] <= 5:
-                    flash(f'{urun["urun_adi"]} için stok azaldı ({urun["stok"]} kaldı)!', 'warning')
-                if urun['fiyat'] == 0:
-                    flash(f'{urun["urun_adi"]} ürününün fiyatı sıfır. Lütfen sistem yöneticisi ile iletişime geçin.', 'warning')
-                # Satıcı kontrolü
-                cursor.execute("SELECT satici_id FROM saticilar WHERE satici_id = %s", (form.satici_adi.data,))
+    try:
+        urun_id = request.form.get('urun_id')
+        renk_ozellik_id = request.form.get('renk_ozellik_id')
+        cam_tipi_ozellik_id = request.form.get('cam_tipi_ozellik_id')
+        miktar = int(request.form.get('miktar', 1))
+
+        if not urun_id or miktar < 1:
+            flash('Geçersiz ürün veya miktar!', 'danger')
+            return redirect(url_for('urunler'))
+
+        with get_db_connection() as connection:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute("SELECT stok FROM urunler WHERE urun_id = %s", (urun_id,))
+            urun = cursor.fetchone()
+            if not urun:
+                flash('Ürün bulunamadı!', 'danger')
+                return redirect(url_for('urunler'))
+            if urun['stok'] < miktar:
+                flash('Yeterli stok yok!', 'danger')
+                return redirect(url_for('urunler'))
+
+            # Özellikleri kontrol et
+            if renk_ozellik_id:
+                cursor.execute("SELECT ozellik_id FROM urun_ozellikleri WHERE ozellik_id = %s AND urun_id = %s AND ozellik_tipi = 'renk'", (renk_ozellik_id, urun_id))
                 if not cursor.fetchone():
-                    flash('Seçilen satıcı geçersiz.', 'danger')
-                    return render_template('sepet_ekle.html', form=form)
-                cursor.execute("INSERT INTO sepet (kullanici_id, urun_id, miktar, satici_id) VALUES (%s, %s, %s, %s)",
-                              (current_user.id, form.urun_adi.data, form.miktar.data, form.satici_adi.data))
-                connection.commit()
-                flash(f'{urun["urun_adi"]} sepete eklendi!', 'success')
-                return redirect(url_for('sepet'))
-        except Exception as e:
-            flash(f"Sepet ekleme hatası: {str(e)}", 'danger')
-            return render_template('sepet_ekle.html', form=form)
-    return render_template('sepet_ekle.html', form=form)
+                    flash('Geçersiz renk seçimi!', 'danger')
+                    return redirect(url_for('urunler'))
+            if cam_tipi_ozellik_id:
+                cursor.execute("SELECT ozellik_id FROM urun_ozellikleri WHERE ozellik_id = %s AND urun_id = %s AND ozellik_tipi = 'cam_tipi'", (cam_tipi_ozellik_id, urun_id))
+                if not cursor.fetchone():
+                    flash('Geçersiz cam tipi seçimi!', 'danger')
+                    return redirect(url_for('urunler'))
+
+            cursor.execute(
+                """
+                INSERT INTO sepet (kullanici_id, urun_id, miktar, renk_ozellik_id, cam_tipi_ozellik_id)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (current_user.id, urun_id, miktar, renk_ozellik_id or None, cam_tipi_ozellik_id or None)
+            )
+            connection.commit()
+            flash('Ürün sepete eklendi!', 'success')
+            return redirect(url_for('sepet'))
+    except Exception as e:
+        flash(f"Sepete ekleme hatası: {str(e)}", 'danger')
+        return redirect(url_for('urunler'))
 @app.route('/sepet')
 @login_required
 def sepet():
@@ -769,7 +781,6 @@ def odeme():
 
     # GET isteği için varsayılan dönüş (siparis_id yoksa)
     return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi)
-
 def get_adopen_pvc_products():
     url = "https://www.adopen.com.tr/pvc-pencere-sistemleri"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -783,11 +794,20 @@ def get_adopen_pvc_products():
             name = item.find('h3') or item.find('h4')
             if name:
                 products.append({
+                    'urun_id': None,  # Web'den gelen ürünlerin urun_id'si yok
                     'urun_adi': name.text.strip(),
                     'kategori': 'PVC Pencere',
                     'stok': 0,
                     'fiyat': 0.0,
-                    'cari_fiyat': 0.0
+                    'cari_fiyat': 0.0,
+                    'renkler': ['Beyaz', 'Antrasit'],  # Varsayılan renkler
+                    'cam_tipleri': ['Çift Cam', 'Tek Cam'],  # Varsayılan cam tipleri
+                    'ozellikler': {
+                        'Beyaz': {'ozellik_id': None, 'fiyat_ekleme': 10.0},
+                        'Antrasit': {'ozellik_id': None, 'fiyat_ekleme': 15.0},
+                        'Çift Cam': {'ozellik_id': None, 'fiyat_ekleme': 20.0},
+                        'Tek Cam': {'ozellik_id': None, 'fiyat_ekleme': 10.0}
+                    }
                 })
         return products
     except Exception as e:
@@ -799,24 +819,45 @@ def urunler():
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT urun_id, urun_adi, kategori, stok, fiyat, cari_fiyat FROM urunler ORDER BY urun_adi")
-            local_urunler = [
-                {
+            cursor.execute(
+                """
+                SELECT u.urun_id, u.urun_adi, u.kategori, u.stok, u.fiyat, u.cari_fiyat
+                FROM urunler u
+                ORDER BY u.urun_adi
+                """
+            )
+            local_urunler = []
+            for row in cursor.fetchall():
+                # Özellikleri çek
+                cursor.execute(
+                    """
+                    SELECT ozellik_id, ozellik_tipi, deger, fiyat_ekleme
+                    FROM urun_ozellikleri
+                    WHERE urun_id = %s
+                    """,
+                    (row['urun_id'],)
+                )
+                ozellikler = cursor.fetchall()
+                renkler = [ozellik['deger'] for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'renk']
+                cam_tipleri = [ozellik['deger'] for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'cam_tipi']
+                ozellik_dict = {ozellik['deger']: {'ozellik_id': ozellik['ozellik_id'], 'fiyat_ekleme': float(ozellik['fiyat_ekleme'] or 0.0)} for ozellik in ozellikler}
+                local_urunler.append({
                     'urun_id': row['urun_id'],
                     'urun_adi': row['urun_adi'],
                     'kategori': row['kategori'],
                     'stok': row['stok'],
                     'fiyat': float(row['fiyat'] or 0.0),
-                    'cari_fiyat': float(row['cari_fiyat'] or 0.0)
-                } for row in cursor.fetchall()
-            ]
+                    'cari_fiyat': float(row['cari_fiyat'] or 0.0),
+                    'renkler': renkler,
+                    'cam_tipleri': cam_tipleri,
+                    'ozellikler': ozellik_dict
+                })
             adopen_urunler = get_adopen_pvc_products()
             urunler = local_urunler + adopen_urunler
             return render_template('urunler.html', urunler=urunler)
     except Exception as e:
         flash(f"Ürün listeleme hatası: {str(e)}", 'danger')
         return render_template('urunler.html', urunler=[])
-
 @app.route('/urun_ekle', methods=['GET', 'POST'])
 @login_required
 def urun_ekle():
@@ -832,17 +873,45 @@ def urun_ekle():
                 if cursor.fetchone():
                     flash('Bu ürün adı zaten kayıtlı!', 'danger')
                     return render_template('urun_ekle.html', form=form)
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO urunler (urun_adi, kategori, stok, fiyat, cari_fiyat)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (form.urun_adi.data, form.kategori.data, form.stok.data, form.fiyat.data, form.cari_fiyat.data))
+                    """,
+                    (form.urun_adi.data, form.kategori.data, form.stok.data, form.fiyat.data, form.cari_fiyat.data)
+                )
+                urun_id = cursor.lastrowid
+
+                # Özellikleri ekle
+                renkler = request.form.get('renkler', '').split(',') if request.form.get('renkler') else []
+                renk_fiyatlari = request.form.get('renk_fiyatlari', '').split(',') if request.form.get('renk_fiyatlari') else []
+                cam_tipleri = request.form.get('cam_tipleri', '').split(',') if request.form.get('cam_tipleri') else []
+                cam_fiyatlari = request.form.get('cam_fiyatlari', '').split(',') if request.form.get('cam_fiyatlari') else []
+
+                for renk, fiyat in zip(renkler, renk_fiyatlari):
+                    if renk.strip():
+                        cursor.execute(
+                            """
+                            INSERT INTO urun_ozellikleri (urun_id, ozellik_tipi, deger, fiyat_ekleme)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (urun_id, 'renk', renk.strip(), float(fiyat.strip()) if fiyat.strip() else 0.0)
+                        )
+                for cam_tipi, fiyat in zip(cam_tipleri, cam_fiyatlari):
+                    if cam_tipi.strip():
+                        cursor.execute(
+                            """
+                            INSERT INTO urun_ozellikleri (urun_id, ozellik_tipi, deger, fiyat_ekleme)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (urun_id, 'cam_tipi', cam_tipi.strip(), float(fiyat.strip()) if fiyat.strip() else 0.0)
+                        )
                 connection.commit()
-                flash('Ürün başarıyla eklendi!', 'success')
+                flash('Ürün ve özellikler başarıyla eklendi!', 'success')
                 return redirect(url_for('urunler'))
         except Exception as e:
             flash(f"Ürün ekleme hatası: {str(e)}", 'danger')
     return render_template('urun_ekle.html', form=form)
-
 @app.route('/urun_duzenle/<int:urun_id>', methods=['GET', 'POST'])
 @login_required
 def urun_duzenle(urun_id):
@@ -852,11 +921,34 @@ def urun_duzenle(urun_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT urun_id, urun_adi, kategori, stok, fiyat, cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
+            cursor.execute(
+                """
+                SELECT urun_id, urun_adi, kategori, stok, fiyat, cari_fiyat
+                FROM urunler
+                WHERE urun_id = %s
+                """,
+                (urun_id,)
+            )
             urun = cursor.fetchone()
             if not urun:
                 flash('Ürün bulunamadı!', 'danger')
                 return redirect(url_for('urunler'))
+
+            # Özellikleri çek
+            cursor.execute(
+                """
+                SELECT ozellik_id, ozellik_tipi, deger, fiyat_ekleme
+                FROM urun_ozellikleri
+                WHERE urun_id = %s
+                """,
+                (urun_id,)
+            )
+            ozellikler = cursor.fetchall()
+            renkler = [ozellik['deger'] for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'renk']
+            renk_fiyatlari = [float(ozellik['fiyat_ekleme'] or 0.0) for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'renk']
+            cam_tipleri = [ozellik['deger'] for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'cam_tipi']
+            cam_fiyatlari = [float(ozellik['fiyat_ekleme'] or 0.0) for ozellik in ozellikler if ozellik['ozellik_tipi'] == 'cam_tipi']
+
             form = UrunForm(
                 urun_adi=urun['urun_adi'],
                 kategori=urun['kategori'],
@@ -865,19 +957,52 @@ def urun_duzenle(urun_id):
                 cari_fiyat=urun['cari_fiyat']
             )
             if form.validate_on_submit():
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE urunler
                     SET urun_adi = %s, kategori = %s, stok = %s, fiyat = %s, cari_fiyat = %s
                     WHERE urun_id = %s
-                """, (form.urun_adi.data, form.kategori.data, form.stok.data, form.fiyat.data, form.cari_fiyat.data, urun_id))
+                    """,
+                    (form.urun_adi.data, form.kategori.data, form.stok.data, form.fiyat.data, form.cari_fiyat.data, urun_id)
+                )
+                # Mevcut özellikleri sil
+                cursor.execute("DELETE FROM urun_ozellikleri WHERE urun_id = %s", (urun_id,))
+                # Yeni özellikleri ekle
+                renkler = request.form.get('renkler', '').split(',') if request.form.get('renkler') else []
+                renk_fiyatlari = request.form.get('renk_fiyatlari', '').split(',') if request.form.get('renk_fiyatlari') else []
+                cam_tipleri = request.form.get('cam_tipleri', '').split(',') if request.form.get('cam_tipleri') else []
+                cam_fiyatlari = request.form.get('cam_fiyatlari', '').split(',') if request.form.get('cam_fiyatlari') else []
+
+                for renk, fiyat in zip(renkler, renk_fiyatlari):
+                    if renk.strip():
+                        cursor.execute(
+                            """
+                            INSERT INTO urun_ozellikleri (urun_id, ozellik_tipi, deger, fiyat_ekleme)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (urun_id, 'renk', renk.strip(), float(fiyat.strip()) if fiyat.strip() else 0.0)
+                        )
+                for cam_tipi, fiyat in zip(cam_tipleri, cam_fiyatlari):
+                    if cam_tipi.strip():
+                        cursor.execute(
+                            """
+                            INSERT INTO urun_ozellikleri (urun_id, ozellik_tipi, deger, fiyat_ekleme)
+                            VALUES (%s, %s, %s, %s)
+                            """,
+                            (urun_id, 'cam_tipi', cam_tipi.strip(), float(fiyat.strip()) if fiyat.strip() else 0.0)
+                        )
                 connection.commit()
-                flash('Ürün başarıyla güncellendi!', 'success')
+                flash('Ürün ve özellikler başarıyla güncellendi!', 'success')
                 return redirect(url_for('urunler'))
-            return render_template('urun_duzenle.html', form=form, urun_id=urun_id)
+            return render_template('urun_duzenle.html', form=form, urun_id=urun_id, urun={
+                'renkler': renkler,
+                'renk_fiyatlari': renk_fiyatlari,
+                'cam_tipleri': cam_tipleri,
+                'cam_fiyatlari': cam_fiyatlari
+            })
     except Exception as e:
         flash(f"Ürün düzenleme hatası: {str(e)}", 'danger')
         return redirect(url_for('urunler'))
-
 
 @app.route('/puanla/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
@@ -1190,6 +1315,7 @@ def alicilar_analiz():
                               en_cok_siparis_urunler=[],
                               cari_fiyat_labels=[],
                               cari_fiyat_data=[])
+
 
 @app.route('/admin_kullanicilar')
 @login_required

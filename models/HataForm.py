@@ -4,6 +4,8 @@ from flask_wtf import FlaskForm
 from wtforms import SelectField, TextAreaField, StringField, DateField, SubmitField
 from wtforms.validators import DataRequired, Optional, Length
 
+from config.db_config import get_dropdown_choices
+
 
 # Formlar
 class HataForm(FlaskForm):
@@ -16,3 +18,11 @@ class HataForm(FlaskForm):
     aciklama = TextAreaField('Açıklama', validators=[Optional(), Length(max=1000)])
     durum = SelectField('Durum', choices=[('Açık', 'Açık'), ('Kapalı', 'Kapalı'), ('Devam Ediyor', 'Devam Ediyor'), ('Çözüldü', 'Çözüldü')], validators=[DataRequired()])
     submit = SubmitField('Ekle')
+
+    def __init__(self, *args, **kwargs):
+        super(HataForm, self).__init__(*args, **kwargs)
+        urunler, bayiler, alicilar, saticilar = get_dropdown_choices()
+        self.urun_adi.choices = urunler
+        self.bayi_adi.choices = bayiler
+        self.alici_adi.choices = [('', 'Seçiniz')] + alicilar  # Opsiyonel olduğu için boş seçenek ekleniyor
+        self.satici_adi.choices = [('', 'Seçiniz')] + saticilar  # Opsiyonel olduğu için boş seçenek ekleniyor

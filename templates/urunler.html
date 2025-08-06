@@ -28,6 +28,8 @@
                         <th>Kategori</th>
                         <th>Stok</th>
                         <th>Fiyat</th>
+                        <th>Renkler</th>
+                        <th>Cam Tipleri</th>
                         <th>İşlem</th>
                     </tr>
                 </thead>
@@ -37,9 +39,36 @@
                             <td>{{ urun.urun_adi }}</td>
                             <td>{{ urun.kategori or 'Belirtilmemiş' }}</td>
                             <td>{{ urun.stok }}</td>
-                            <td>{{ urun.fiyat }} TL</td>
+                            <td>{{ '%.2f' % urun.fiyat }} TL</td>
+                            <td>{{ urun.renkler|join(', ') or 'Yok' }}</td>
+                            <td>{{ urun.cam_tipleri|join(', ') or 'Yok' }}</td>
                             <td>
-                                <a href="{{ url_for('sepet_ekle') }}" class="btn btn-primary btn-sm btn-adopen">Sepete Ekle</a>
+                                <form method="POST" action="{{ url_for('sepet_ekle') }}">
+                                    <input type="hidden" name="urun_id" value="{{ urun.urun_id }}">
+                                    <div class="mb-2">
+                                        <label for="renk_{{ urun.urun_id }}" class="form-label">Renk</label>
+                                        <select name="renk_ozellik_id" id="renk_{{ urun.urun_id }}" class="form-select form-select-sm">
+                                            <option value="">Renk Seçin</option>
+                                            {% for renk in urun.renkler %}
+                                                <option value="{{ urun.ozellikler[renk].ozellik_id }}">{{ renk }} ({{ '%.2f' % urun.ozellikler[renk].fiyat_ekleme }} TL)</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="cam_tipi_{{ urun.urun_id }}" class="form-label">Cam Tipi</label>
+                                        <select name="cam_tipi_ozellik_id" id="cam_tipi_{{ urun.urun_id }}" class="form-select form-select-sm">
+                                            <option value="">Cam Tipi Seçin</option>
+                                            {% for cam_tipi in urun.cam_tipleri %}
+                                                <option value="{{ urun.ozellikler[cam_tipi].ozellik_id }}">{{ cam_tipi }} ({{ '%.2f' % urun.ozellikler[cam_tipi].fiyat_ekleme }} TL)</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label for="miktar_{{ urun.urun_id }}" class="form-label">Miktar</label>
+                                        <input type="number" name="miktar" id="miktar_{{ urun.urun_id }}" class="form-control form-control-sm" value="1" min="1">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-sm btn-adopen">Sepete Ekle</button>
+                                </form>
                             </td>
                         </tr>
                     {% endfor %}

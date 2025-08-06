@@ -59,6 +59,22 @@
                     <span class="text-danger">{{ error }}</span>
                 {% endfor %}
             </div>
+            <div class="mb-3">
+                <label for="renkler" class="form-label">Renkler (virgülle ayırarak girin, örn: Beyaz,Antrasit)</label>
+                <input type="text" name="renkler" class="form-control" placeholder="Beyaz,Antrasit">
+            </div>
+            <div class="mb-3">
+                <label for="renk_fiyatlari" class="form-label">Renk Fiyatları (virgülle ayırarak girin, örn: 10.0,15.0)</label>
+                <input type="text" name="renk_fiyatlari" class="form-control" placeholder="10.0,15.0">
+            </div>
+            <div class="mb-3">
+                <label for="cam_tipleri" class="form-label">Cam Tipleri (virgülle ayırarak girin, örn: Çift Cam,Tek Cam)</label>
+                <input type="text" name="cam_tipleri" class="form-control" placeholder="Çift Cam,Tek Cam">
+            </div>
+            <div class="mb-3">
+                <label for="cam_fiyatlari" class="form-label">Cam Tipi Fiyatları (virgülle ayırarak girin, örn: 20.0,10.0)</label>
+                <input type="text" name="cam_fiyatlari" class="form-control" placeholder="20.0,10.0">
+            </div>
             {{ form.submit(class="btn btn-primary") }}
         </form>
 

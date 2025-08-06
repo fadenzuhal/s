@@ -25,24 +25,55 @@
             <div class="mb-3">
                 <label for="urun_adi" class="form-label">Ürün Adı</label>
                 {{ form.urun_adi(class="form-control") }}
+                {% for error in form.urun_adi.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
             </div>
             <div class="mb-3">
                 <label for="kategori" class="form-label">Kategori</label>
                 {{ form.kategori(class="form-control") }}
+                {% for error in form.kategori.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
             </div>
             <div class="mb-3">
                 <label for="stok" class="form-label">Stok</label>
                 {{ form.stok(class="form-control") }}
+                {% for error in form.stok.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
             </div>
             <div class="mb-3">
                 <label for="fiyat" class="form-label">Fiyat (TL)</label>
                 {{ form.fiyat(class="form-control") }}
+                {% for error in form.fiyat.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
             </div>
             <div class="mb-3">
                 <label for="cari_fiyat" class="form-label">Cari Fiyat (TL)</label>
                 {{ form.cari_fiyat(class="form-control") }}
+                {% for error in form.cari_fiyat.errors %}
+                    <span class="text-danger">{{ error }}</span>
+                {% endfor %}
             </div>
-            {{ form.submit(class="btn btn-adopen") }}
+            <div class="mb-3">
+                <label for="renkler" class="form-label">Renkler (virgülle ayırarak girin, örn: Beyaz,Antrasit)</label>
+                <input type="text" name="renkler" class="form-control" value="{{ urun.renkler|join(',') if urun.renkler else '' }}" placeholder="Beyaz,Antrasit">
+            </div>
+            <div class="mb-3">
+                <label for="renk_fiyatlari" class="form-label">Renk Fiyatları (virgülle ayırarak girin, örn: 10.0,15.0)</label>
+                <input type="text" name="renk_fiyatlari" class="form-control" value="{{ urun.renk_fiyatlari|join(',') if urun.renk_fiyatlari else '' }}" placeholder="10.0,15.0">
+            </div>
+            <div class="mb-3">
+                <label for="cam_tipleri" class="form-label">Cam Tipleri (virgülle ayırarak girin, örn: Çift Cam,Tek Cam)</label>
+                <input type="text" name="cam_tipleri" class="form-control" value="{{ urun.cam_tipleri|join(',') if urun.cam_tipleri else '' }}" placeholder="Çift Cam,Tek Cam">
+            </div>
+            <div class="mb-3">
+                <label for="cam_fiyatlari" class="form-label">Cam Tipi Fiyatları (virgülle ayırarak girin, örn: 20.0,10.0)</label>
+                <input type="text" name="cam_fiyatlari" class="form-control" value="{{ urun.cam_fiyatlari|join(',') if urun.cam_fiyatlari else '' }}" placeholder="20.0,10.0">
+            </div>
+            {{ form.submit(class="btn btn-primary btn-adopen") }}
         </form>
         <a href="{{ url_for('urunler') }}" class="btn btn-secondary mt-3">Geri Dön</a>
     </div>
