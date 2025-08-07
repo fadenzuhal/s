@@ -22,7 +22,7 @@ class HataForm(FlaskForm):
     def __init__(self, *args, **kwargs):
         super(HataForm, self).__init__(*args, **kwargs)
         urunler, bayiler, alicilar, saticilar = get_dropdown_choices()
-        self.urun_adi.choices = urunler
-        self.bayi_adi.choices = bayiler
-        self.alici_adi.choices = [('', 'Seçiniz')] + alicilar  # Opsiyonel olduğu için boş seçenek ekleniyor
-        self.satici_adi.choices = [('', 'Seçiniz')] + saticilar  # Opsiyonel olduğu için boş seçenek ekleniyor
+        self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
+        self.bayi_adi.choices = bayiler or [('0', 'Bayi bulunamadı')]
+        self.alici_adi.choices = [('', 'Seçiniz')] + (alicilar or [])
+        self.satici_adi.choices = [('', 'Seçiniz')] + (saticilar or [])

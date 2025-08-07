@@ -41,7 +41,13 @@
                                 <td>{{ siparis.siparis_tarihi }}</td>
                                 <td>{{ siparis.durum }}</td>
                                 <td>{{ siparis.satici_adi }}</td>
-                                <td>{{ siparis.toplam|round(2) }} TL</td>
+                                <td>
+                                    {% if siparis.toplam == 0 %}
+                                        <span class="text-danger">Fiyat tanımlı değil!</span>
+                                    {% else %}
+                                        {{ siparis.toplam|round(2) }} TL
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if current_user.rol == 'alici' %}
                                         {% if siparis.durum == 'Bekliyor' %}

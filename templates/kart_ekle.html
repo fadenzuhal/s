@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adopen - Kart Ekle</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}?v=1.0">
+    <style>
+        body { min-height: 100vh; background: #e0e7ff; color: #333; display: flex; align-items: center; justify-content: center; font-family: Arial, sans-serif; }
+        .container { background: rgba(255, 255, 255, 0.95); border-radius: 10px; padding: 40px; box-shadow: 0 4px 20px rgba(0, 78, 135, 0.2); max-width: 600px; }
+        h1, h2 { color: #1e3b77; }
+        .btn-adopen { background-color: #f1ea73; color: #1e3b77; border: 1px solid #1e3b77; transition: transform 0.3s ease; }
+        .btn-adopen:hover { background-color: #e0d963; transform: scale(1.1); }
+        .alert-adopen { border-left: 4px solid #1e3b77; background-color: #e0e7ff; color: #333; }
+        .form-control { border-radius: 0.5rem; }
+        .invalid-feedback { display: none; }
+        .was-validated .invalid-feedback, .form-control:invalid ~ .invalid-feedback { display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Kart Ekle</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <form method="POST" class="needs-validation" novalidate id="kart_ekle_form">
+            {{ form.hidden_tag() }}
+            <div class="mb-3">
+                {{ form.kart_sahibi_adi.label(class="form-label fw-bold") }}
+                {{ form.kart_sahibi_adi(class="form-control", placeholder="Kart Sahibinin Adı Soyadı", required=True) }}
+                {% if form.kart_sahibi_adi.errors %}
+                    <div class="invalid-feedback">
+                        {% for error in form.kart_sahibi_adi.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                {{ form.kart_numarasi.label(class="form-label fw-bold") }}
+                {{ form.kart_numarasi(class="form-control", placeholder="16 haneli kart numarası", maxlength="19", required=True, **{'aria-describedby': 'kart_numarasi_error'}) }}
+                {% if form.kart_numarasi.errors %}
+                    <div id="kart_numarasi_error" class="invalid-feedback">
+                        {% for error in form.kart_numarasi.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                {{ form.son_kullanma_tarihi.label(class="form-label fw-bold") }}
+                {{ form.son_kullanma_tarihi(class="form-control", placeholder="MM/YY", maxlength="5", required=True, **{'aria-describedby': 'son_kullanma_tarihi_error'}) }}
+                {% if form.son_kullanma_tarihi.errors %}
+                    <div id="son_kullanma_tarihi_error" class="invalid-feedback">
+                        {% for error in form.son_kullanma_tarihi.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="mb-3">
+                {{ form.cvv.label(class="form-label fw-bold") }}
+                {{ form.cvv(class="form-control", placeholder="3 haneli CVV kodu", maxlength="3", required=True, **{'aria-describedby': 'cvv_error'}) }}
+                {% if form.cvv.errors %}
+                    <div id="cvv_error" class="invalid-feedback">
+                        {% for error in form.cvv.errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+            {{ form.submit(class="btn btn-adopen") }}
+            <a href="{{ url_for('odeme', siparis_id=siparis_id) }}" class="btn btn-secondary btn-adopen">Geri Dön</a>
+        </form>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Form doğrulama için Bootstrap
+        (function () {
+            'use strict';
+            const form = document.getElementById('kart_ekle_form');
+            form.addEventListener('submit', event => {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        })();
+
+        // Kart numarası için biçimlendirme ve doğrulama
+        const kartNumarasiInput = document.getElementById('kart_numarasi');
+        kartNumarasiInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, ''); // Sadece rakamları al
+            if (value.length > 16) value = value.slice(0, 16); // Maksimum 16 hane
+            let formatted = '';
+            for (let i = 0; i < value.length; i++) {
+                if (i > 0 && i % 4 === 0) formatted += ' ';
+                formatted += value[i];
+            }
+            e.target.value = formatted;
+
+            // 16 hane zorunlu
+            if (value.length !== 16) {
+                e.target.setCustomValidity('Kart numarası tam 16 hane olmalı.');
+                e.target.classList.add('is-invalid');
+            } else {
+                e.target.setCustomValidity('');
+                e.target.classList.remove('is-invalid');
+            }
+        });
+
+        // Son kullanma tarihi için biçimlendirme
+        const sonKullanmaInput = document.getElementById('son_kullanma_tarihi');
+        sonKullanmaInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 4) value = value.slice(0, 4);
+            if (value.length >= 2) {
+                e.target.value = value.slice(0, 2) + '/' + value.slice(2);
+            } else {
+                e.target.value = value;
+            }
+            // MM/YY doğrulama
+            if (value.length !== 4 || parseInt(value.slice(0, 2)) > 12 || parseInt(value.slice(0, 2)) < 1) {
+                e.target.setCustomValidity('Geçerli bir MM/YY formatı girin (örn. 01-12/YY).');
+                e.target.classList.add('is-invalid');
+            } else {
+                e.target.setCustomValidity('');
+                e.target.classList.remove('is-invalid');
+            }
+        });
+
+        // CVV için sadece rakam ve 3 hane
+        const cvvInput = document.getElementById('cvv');
+        cvvInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '').slice(0, 3);
+            e.target.value = value;
+            if (value.length !== 3) {
+                e.target.setCustomValidity('CVV tam 3 haneli olmalı.');
+                e.target.classList.add('is-invalid');
+            } else {
+                e.target.setCustomValidity('');
+                e.target.classList.remove('is-invalid');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-
+import re
 from venv import logger
 from flask_login import  login_user, logout_user
 from decimal import Decimal
@@ -6,24 +6,26 @@ import mysql.connector
 import requests,os
 from bs4 import BeautifulSoup
 from werkzeug.utils import secure_filename
-
 from config.db_config import  get_dropdown_choices
 from models.ContactForm import ContactForm
 from models.DurumGuncelleForm import DurumGuncelleForm
 from models.HataForm import HataForm
+from models.KartEkleForm import KartEkleForm
 from models.LoginForm import LoginForm
 from models.OdemeForm import OdemeForm
 from models.ProfilGuncelleForm import ProfilGuncelleForm
+from models.SepetEkleForm import SepetEkleForm
 from models.SepetForm import SepetForm
 from models.UrunForm import UrunForm
 from models.User import User
-from flask import Flask, flash, redirect, render_template, url_for, request, current_app
+from flask import Flask, flash, redirect, render_template, url_for, request, current_app, jsonify
 from flask_login import LoginManager, login_required, current_user
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 from datetime import datetime
 from config.db_config import get_db_connection
 from models.TalepForm import TalepForm
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv()
 # Flask yapılandırması
@@ -35,7 +37,9 @@ app.config['MAIL_USERNAME'] = os.getenv('EMAIL_ADDRESS')
 app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_ADDRESS')
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-# Flask-Mail başlatma
+IYZICO_API_KEY = 'your_api_key'
+IYZICO_SECRET_KEY = 'your_secret_key'
+IYZICO_BASE_URL = 'https://sandbox-api.iyzipay.com'
 mail = Mail(app)
 # Flask-Login ayarları
 login_manager = LoginManager()
@@ -291,84 +295,190 @@ def hata_sil(hata_id):
     except Exception as e:
         flash(f"Hata oluştu: {str(e)}", 'danger')
         return redirect(url_for('index'))
-@app.route('/sepet_ekle', methods=['POST'])
+
+
+@app.route('/sepet_ekle', methods=['GET', 'POST'])
 @login_required
 def sepet_ekle():
+    form = SepetEkleForm()
     try:
-        urun_id = request.form.get('urun_id')
-        renk_ozellik_id = request.form.get('renk_ozellik_id')
-        cam_tipi_ozellik_id = request.form.get('cam_tipi_ozellik_id')
-        miktar = int(request.form.get('miktar', 1))
+        with get_db_connection() as connection:
+            cursor = connection.cursor(dictionary=True)
 
-        if not urun_id or miktar < 1:
-            flash('Geçersiz ürün veya miktar!', 'danger')
-            return redirect(url_for('urunler'))
+            # Ürün ve satıcı seçeneklerini doldur
+            cursor.execute("SELECT urun_id, urun_adi FROM urunler ORDER BY urun_adi")
+            form.urun_adi.choices = [(0, "Ürün seçin")] + [(row['urun_id'], row['urun_adi']) for row in
+                                                           cursor.fetchall()]
+            cursor.execute("SELECT satici_id, ad FROM saticilar ORDER BY ad")
+            form.satici_adi.choices = [(0, "Satıcı seçin")] + [(row['satici_id'], row['ad']) for row in
+                                                               cursor.fetchall()]
+
+            # Renk ve cam tipi seçenekleri (başlangıçta boş)
+            form.renk_ozellik_id.choices = [(0, "Renk seçin")]
+            form.cam_tipi_ozellik_id.choices = [(0, "Cam tipi seçin")]
+
+            if form.validate_on_submit():
+                urun_id = form.urun_adi.data
+                satici_id = form.satici_adi.data
+                miktar = form.miktar.data
+                renk_ozellik_id = form.renk_ozellik_id.data or None
+                cam_tipi_ozellik_id = form.cam_tipi_ozellik_id.data or None
+
+                if not urun_id or urun_id == 0:
+                    flash('Lütfen bir ürün seçin.', 'danger')
+                    return render_template('sepet_ekle.html', form=form)
+                if satici_id == 0:
+                    flash('Lütfen bir satıcı seçin.', 'danger')
+                    return render_template('sepet_ekle.html', form=form)
+                if miktar < 1:
+                    flash('Miktar en az 1 olmalı.', 'danger')
+                    return render_template('sepet_ekle.html', form=form)
+
+                # Ürün stok ve fiyat kontrolü
+                cursor.execute("SELECT urun_adi, stok, cari_fiyat FROM urunler WHERE urun_id = %s", (urun_id,))
+                urun = cursor.fetchone()
+                if not urun:
+                    flash('Ürün bulunamadı.', 'danger')
+                    return render_template('sepet_ekle.html', form=form)
+                if urun['stok'] < miktar:
+                    flash(f"{urun['urun_adi']} için yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {miktar}).",
+                          'danger')
+                    return render_template('sepet_ekle.html', form=form)
+
+                # Fiyat hesaplama
+                toplam_fiyat = float(urun['cari_fiyat'] or 0.0) * miktar
+                if renk_ozellik_id:
+                    cursor.execute(
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
+                        (renk_ozellik_id,))
+                    renk = cursor.fetchone()
+                    if renk and renk['fiyat_ekleme']:
+                        toplam_fiyat += float(renk['fiyat_ekleme']) * miktar
+                if cam_tipi_ozellik_id:
+                    cursor.execute(
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
+                        (cam_tipi_ozellik_id,))
+                    cam = cursor.fetchone()
+                    if cam and cam['fiyat_ekleme']:
+                        toplam_fiyat += float(cam['fiyat_ekleme']) * miktar
+
+                if toplam_fiyat == 0:
+                    flash(f"{urun['urun_adi']} için fiyat tanımlı değil!", 'danger')
+                    return render_template('sepet_ekle.html', form=form)
+
+                # Sepete ekle
+                cursor.execute("""
+                               INSERT INTO sepet (kullanici_id, urun_id, miktar, satici_id, renk_ozellik_id,
+                                                  cam_tipi_ozellik_id)
+                               VALUES (%s, %s, %s, %s, %s, %s)
+                               """, (current_user.id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id))
+                connection.commit()
+                flash(f"{urun['urun_adi']} sepete eklendi.", 'success')
+                return redirect(url_for('sepet'))
+
+            return render_template('sepet_ekle.html', form=form)
+    except Exception as e:
+        flash(f"Sepete ekleme hatası: {str(e)}", 'danger')
+        return render_template('sepet_ekle.html', form=form)
+
+
+@app.route('/get_ozellikler', methods=['POST'])
+def get_ozellikler():
+    try:
+        urun_id = request.form.get('urun_id', type=int)
+        if not urun_id:
+            return jsonify({'error': 'Ürün ID eksik'}), 400
 
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT stok FROM urunler WHERE urun_id = %s", (urun_id,))
-            urun = cursor.fetchone()
-            if not urun:
-                flash('Ürün bulunamadı!', 'danger')
-                return redirect(url_for('urunler'))
-            if urun['stok'] < miktar:
-                flash('Yeterli stok yok!', 'danger')
-                return redirect(url_for('urunler'))
-
-            # Özellikleri kontrol et
-            if renk_ozellik_id:
-                cursor.execute("SELECT ozellik_id FROM urun_ozellikleri WHERE ozellik_id = %s AND urun_id = %s AND ozellik_tipi = 'renk'", (renk_ozellik_id, urun_id))
-                if not cursor.fetchone():
-                    flash('Geçersiz renk seçimi!', 'danger')
-                    return redirect(url_for('urunler'))
-            if cam_tipi_ozellik_id:
-                cursor.execute("SELECT ozellik_id FROM urun_ozellikleri WHERE ozellik_id = %s AND urun_id = %s AND ozellik_tipi = 'cam_tipi'", (cam_tipi_ozellik_id, urun_id))
-                if not cursor.fetchone():
-                    flash('Geçersiz cam tipi seçimi!', 'danger')
-                    return redirect(url_for('urunler'))
-
-            cursor.execute(
-                """
-                INSERT INTO sepet (kullanici_id, urun_id, miktar, renk_ozellik_id, cam_tipi_ozellik_id)
-                VALUES (%s, %s, %s, %s, %s)
-                """,
-                (current_user.id, urun_id, miktar, renk_ozellik_id or None, cam_tipi_ozellik_id or None)
-            )
-            connection.commit()
-            flash('Ürün sepete eklendi!', 'success')
-            return redirect(url_for('sepet'))
+            cursor.execute("""
+                           SELECT ozellik_id, deger, fiyat_ekleme
+                           FROM urun_ozellikleri
+                           WHERE urun_id = %s
+                             AND ozellik_tipi = 'renk'
+                           """, (urun_id,))
+            renkler = cursor.fetchall()
+            cursor.execute("""
+                           SELECT ozellik_id, deger, fiyat_ekleme
+                           FROM urun_ozellikleri
+                           WHERE urun_id = %s
+                             AND ozellik_tipi = 'cam_tipi'
+                           """, (urun_id,))
+            cam_tipleri = cursor.fetchall()
+            return jsonify({'renkler': renkler, 'cam_tipleri': cam_tipleri})
     except Exception as e:
-        flash(f"Sepete ekleme hatası: {str(e)}", 'danger')
-        return redirect(url_for('urunler'))
+        return jsonify({'error': str(e)})
+
 @app.route('/sepet')
 @login_required
 def sepet():
     sepet_items = []
-    sifir_fiyat_urunler = []
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute("""
-                SELECT s.sepet_id, u.urun_adi, s.miktar, u.fiyat, st.ad AS satici_adi
-                FROM sepet s JOIN urunler u ON s.urun_id = u.urun_id LEFT JOIN saticilar st ON s.satici_id = st.satici_id
-                WHERE s.kullanici_id = %s
-            """, (current_user.id,))
-            for row in cursor.fetchall():
-                if row['fiyat'] is None or row['fiyat'] == 0:
-                    sifir_fiyat_urunler.append(row['urun_adi'])
+                           SELECT s.sepet_id,
+                                  s.urun_id,
+                                  s.miktar,
+                                  s.satici_id,
+                                  s.renk_ozellik_id,
+                                  s.cam_tipi_ozellik_id,
+                                  u.urun_adi,
+                                  u.cari_fiyat
+                           FROM sepet s
+                                    JOIN urunler u ON s.urun_id = u.urun_id
+                           WHERE s.kullanici_id = %s
+                           """, (current_user.id,))
+
+            for item in cursor.fetchall():
+                # Fiyat hesaplama
+                fiyat = float(item['cari_fiyat'] or 0.0)
+                renk_adi = None
+                cam_tipi_adi = None
+
+                # Renk özelliği fiyatını ekle
+                if item['renk_ozellik_id']:
+                    cursor.execute("""
+                                   SELECT deger, fiyat_ekleme
+                                   FROM urun_ozellikleri
+                                   WHERE ozellik_id = %s
+                                     AND ozellik_tipi = 'renk'
+                                   """, (item['renk_ozellik_id'],))
+                    renk = cursor.fetchone()
+                    if renk:
+                        fiyat += float(renk['fiyat_ekleme'] or 0.0)
+                        renk_adi = renk['deger']
+
+                # Cam tipi özelliği fiyatını ekle
+                if item['cam_tipi_ozellik_id']:
+                    cursor.execute("""
+                                   SELECT deger, fiyat_ekleme
+                                   FROM urun_ozellikleri
+                                   WHERE ozellik_id = %s
+                                     AND ozellik_tipi = 'cam_tipi'
+                                   """, (item['cam_tipi_ozellik_id'],))
+                    cam = cursor.fetchone()
+                    if cam:
+                        fiyat += float(cam['fiyat_ekleme'] or 0.0)
+                        cam_tipi_adi = cam['deger']
+
+                toplam = fiyat * item['miktar']
+                if toplam == 0:
+                    flash(f"{item['urun_adi']} için fiyat tanımlı değil!", 'warning')
+
                 sepet_items.append({
-                    'sepet_id': row['sepet_id'],
-                    'urun_adi': row['urun_adi'],
-                    'miktar': row['miktar'],
-                    'fiyat': float(row['fiyat']) if row['fiyat'] is not None else 0.0,
-                    'toplam': row['miktar'] * float(row['fiyat']) if row['fiyat'] is not None else 0.0,
-                    'satici_adi': row['satici_adi'] or 'Belirtilmemiş'
+                    'sepet_id': item['sepet_id'],
+                    'urun_adi': f"{item['urun_adi']} ({renk_adi or 'Standart'}, {cam_tipi_adi or 'Standart'})",
+                    'miktar': item['miktar'],
+                    'fiyat': round(fiyat, 2),
+                    'toplam': round(toplam, 2)
                 })
-            if sifir_fiyat_urunler:
-                flash(f"Uyarı: {', '.join(sifir_fiyat_urunler)} ürünlerinin fiyatı sıfır.", 'warning')
+
+            return render_template('sepet.html', sepet_items=sepet_items)
     except Exception as e:
         flash(f"Sepet görüntüleme hatası: {str(e)}", 'danger')
-    return render_template('sepet.html', sepet_items=sepet_items)
+        return render_template('sepet.html', sepet_items=[])
+
 
 @app.route('/sepet_sil/<int:sepet_id>', methods=['GET'])
 @login_required
@@ -387,13 +497,17 @@ def sepet_sil(sepet_id):
     except Exception as e:
         flash(f"Sepet silme hatası: {str(e)}", 'danger')
         return redirect(url_for('sepet'))
+
+
 @app.route('/siparis_olustur')
 @login_required
 def siparis_olustur():
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT sepet_id, urun_id, miktar, satici_id FROM sepet WHERE kullanici_id = %s", (current_user.id,))
+            cursor.execute(
+                "SELECT sepet_id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id FROM sepet WHERE kullanici_id = %s",
+                (current_user.id,))
             sepet_items = cursor.fetchall()
             if not sepet_items:
                 flash('Sepet boş, sipariş oluşturulmadı.', 'danger')
@@ -402,22 +516,54 @@ def siparis_olustur():
             basarili_urunler = []
             hatali_urunler = []
             for item in sepet_items:
+                # Ürün bilgilerini al
                 cursor.execute("SELECT urun_adi, stok, cari_fiyat FROM urunler WHERE urun_id = %s", (item['urun_id'],))
                 urun = cursor.fetchone()
                 if not urun:
                     hatali_urunler.append(f"ID {item['urun_id']}: Ürün bulunamadı")
                     continue
                 if urun['stok'] < item['miktar']:
-                    hatali_urunler.append(f"{urun['urun_adi']}: Yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {item['miktar']})")
+                    hatali_urunler.append(
+                        f"{urun['urun_adi']}: Yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {item['miktar']})")
                     continue
+
+                # Toplam fiyat hesaplama
+                toplam_fiyat = float(urun['cari_fiyat'] or 0.0) * item['miktar']
+
+                # Renk özelliği fiyatını ekle
+                if item['renk_ozellik_id']:
+                    cursor.execute(
+                        "SELECT fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
+                        (item['renk_ozellik_id'],))
+                    renk_fiyat = cursor.fetchone()
+                    if renk_fiyat and renk_fiyat['fiyat_ekleme']:
+                        toplam_fiyat += float(renk_fiyat['fiyat_ekleme']) * item['miktar']
+
+                # Cam tipi özelliği fiyatını ekle
+                if item['cam_tipi_ozellik_id']:
+                    cursor.execute(
+                        "SELECT fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
+                        (item['cam_tipi_ozellik_id'],))
+                    cam_fiyat = cursor.fetchone()
+                    if cam_fiyat and cam_fiyat['fiyat_ekleme']:
+                        toplam_fiyat += float(cam_fiyat['fiyat_ekleme']) * item['miktar']
+
+                # Siparişi kaydet
                 cursor.execute("START TRANSACTION")
                 cursor.execute("""
-                    INSERT INTO siparisler (kullanici_id, urun_id, miktar, siparis_tarihi, durum, satici_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (current_user.id, item['urun_id'], item['miktar'], datetime.now(), 'Bekliyor', item['satici_id']))
+                               INSERT INTO siparisler (kullanici_id, urun_id, miktar, siparis_tarihi, durum, satici_id,
+                                                       renk_ozellik_id, cam_tipi_ozellik_id, toplam_fiyat)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               """, (current_user.id, item['urun_id'], item['miktar'], datetime.now(), 'Bekliyor',
+                                     item['satici_id'],
+                                     item['renk_ozellik_id'] or None, item['cam_tipi_ozellik_id'] or None,
+                                     toplam_fiyat))
                 siparis_id = cursor.lastrowid
-                cursor.execute("UPDATE urunler SET stok = stok - %s WHERE urun_id = %s", (item['miktar'], item['urun_id']))
+                cursor.execute("UPDATE urunler SET stok = stok - %s WHERE urun_id = %s",
+                               (item['miktar'], item['urun_id']))
                 cursor.execute("DELETE FROM sepet WHERE sepet_id = %s", (item['sepet_id'],))
+
+                # Satıcıya e-posta bildirimi
                 cursor.execute("SELECT email, ad FROM saticilar WHERE satici_id = %s", (item['satici_id'],))
                 satici = cursor.fetchone()
                 connection.commit()
@@ -430,12 +576,14 @@ def siparis_olustur():
                         <li><strong>Sipariş ID:</strong> {siparis_id}</li>
                         <li><strong>Ürün:</strong> {urun['urun_adi']}</li>
                         <li><strong>Miktar:</strong> {item['miktar']}</li>
+                        <li><strong>Toplam Fiyat:</strong> {toplam_fiyat:.2f} TL</li>
                         <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
                     </ul>
                     <p>Adopen Ekibi</p>
                     """
                     if not send_email(satici['email'], "Adopen - Yeni Sipariş Bildirimi", email_body):
                         flash(f"{satici['ad']} için e-posta gönderilemedi.", 'warning')
+
             if basarili_urunler:
                 flash(f"Sipariş başarıyla oluşturuldu: {', '.join(basarili_urunler)}", 'success')
             if hatali_urunler:
@@ -445,8 +593,6 @@ def siparis_olustur():
     except Exception as e:
         flash(f"Sipariş oluşturma hatası: {str(e)}", 'danger')
         return redirect(url_for('sepet'))
-
-
 @app.route('/siparisler', methods=['GET'])
 @login_required
 def siparisler():
@@ -457,21 +603,14 @@ def siparisler():
             cursor = connection.cursor(dictionary=True, buffered=True)
             if current_user.rol == 'alici':
                 query = """
-                        SELECT s.siparis_id, \
-                               u.urun_adi, \
-                               s.miktar, \
-                               s.siparis_tarihi, \
-                               s.durum, \
-                               st.ad        AS satici_adi,
-                               u.cari_fiyat AS fiyat, \
-                               s.satici_id, \
-                               s.iade_nedeni
-                        FROM siparisler s
-                                 JOIN urunler u ON s.urun_id = u.urun_id
-                                 LEFT JOIN saticilar st ON s.satici_id = st.satici_id
-                        WHERE s.kullanici_id = %s
-                        ORDER BY s.siparis_tarihi DESC \
-                        """
+                    SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, st.ad AS satici_adi,
+                           s.toplam_fiyat, s.satici_id, s.iade_nedeni, s.renk_ozellik_id, s.cam_tipi_ozellik_id
+                    FROM siparisler s
+                    JOIN urunler u ON s.urun_id = u.urun_id
+                    LEFT JOIN saticilar st ON s.satici_id = st.satici_id
+                    WHERE s.kullanici_id = %s
+                    ORDER BY s.siparis_tarihi DESC
+                """
                 cursor.execute(query, (current_user.id,))
             else:  # satici veya admin
                 cursor.execute("SELECT satici_id FROM saticilar WHERE kullanici_id = %s", (current_user.id,))
@@ -481,56 +620,62 @@ def siparisler():
                     return render_template('siparisler.html', siparisler=[], talepler=[])
 
                 query = """
-                        SELECT s.siparis_id, \
-                               u.urun_adi, \
-                               s.miktar, \
-                               s.siparis_tarihi, \
-                               s.durum, \
-                               st.ad        AS satici_adi,
-                               u.cari_fiyat AS fiyat, \
-                               s.satici_id, \
-                               s.iade_nedeni
-                        FROM siparisler s
-                                 JOIN urunler u ON s.urun_id = u.urun_id
-                                 LEFT JOIN saticilar st ON s.satici_id = st.satici_id
-                        WHERE s.satici_id = %s
-                        ORDER BY s.siparis_tarihi DESC \
-                        """
+                    SELECT s.siparis_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, st.ad AS satici_adi,
+                           s.toplam_fiyat, s.satici_id, s.iade_nedeni, s.renk_ozellik_id, s.cam_tipi_ozellik_id
+                    FROM siparisler s
+                    JOIN urunler u ON s.urun_id = u.urun_id
+                    LEFT JOIN saticilar st ON s.satici_id = st.satici_id
+                    WHERE s.satici_id = %s
+                    ORDER BY s.siparis_tarihi DESC
+                """
                 cursor.execute(query, (satici['satici_id'],))
 
-            siparisler = [
-                {
+            siparisler = []
+            for row in cursor.fetchall():
+                # Özellik isimlerini al (renk ve cam tipi)
+                renk_adi = None
+                cam_tipi_adi = None
+                if row['renk_ozellik_id']:
+                    cursor.execute("SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'", (row['renk_ozellik_id'],))
+                    renk = cursor.fetchone()
+                    renk_adi = renk['deger'] if renk else None
+                if row['cam_tipi_ozellik_id']:
+                    cursor.execute("SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'", (row['cam_tipi_ozellik_id'],))
+                    cam = cursor.fetchone()
+                    cam_tipi_adi = cam['deger'] if cam else None
+
+                siparisler.append({
                     'siparis_id': row['siparis_id'],
-                    'urun_adi': row['urun_adi'],
+                    'urun_adi': f"{row['urun_adi']} ({renk_adi or 'Standart'}, {cam_tipi_adi or 'Standart'})",
                     'miktar': row['miktar'],
-                    'siparis_tarihi': row['siparis_tarihi'].strftime('%Y-%m-%d %H:%M:%S') if row[
-                        'siparis_tarihi'] else '-',
+                    'siparis_tarihi': row['siparis_tarihi'].strftime('%Y-%m-%d %H:%M:%S') if row['siparis_tarihi'] else '-',
                     'durum': row['durum'] or 'Bekliyor',
                     'satici_adi': row['satici_adi'] or 'Bilinmeyen Satıcı',
-                    'toplam': float(row['fiyat']) * row['miktar'] if row['fiyat'] is not None else 0.0,
+                    'toplam': float(row['toplam_fiyat'] or 0.0),
                     'satici_id': row['satici_id'],
                     'iade_nedeni': row['iade_nedeni'] or None
-                } for row in cursor.fetchall()
-            ]
+                })
 
             if current_user.rol in ['satici', 'admin']:
                 cursor.execute("""
-                               SELECT t.id, t.siparis_id, t.talep_tipi, t.talep_nedeni, t.talep_durumu, t.talep_tarihi
-                               FROM siparis_talepleri t
-                                        JOIN siparisler s ON t.siparis_id = s.siparis_id
-                                        JOIN saticilar st ON s.satici_id = st.satici_id
-                               WHERE s.satici_id = %s
-                               ORDER BY t.talep_tarihi DESC
-                               """, (satici['satici_id'],))
+                    SELECT t.id, t.siparis_id, t.talep_tipi, t.talep_nedeni, t.talep_durumu, t.talep_tarihi,
+                           k.ad AS alici_adi
+                    FROM siparis_talepleri t
+                    JOIN siparisler s ON t.siparis_id = s.siparis_id
+                    JOIN saticilar st ON s.satici_id = st.satici_id
+                    JOIN kullanicilar k ON s.kullanici_id = k.kullanici_id
+                    WHERE s.satici_id = %s
+                    ORDER BY t.talep_tarihi DESC
+                """, (satici['satici_id'],))
                 talepler = [
                     {
                         'id': row['id'],
                         'siparis_id': row['siparis_id'],
+                        'alici_adi': row['alici_adi'],
                         'talep_tipi': row['talep_tipi'],
                         'talep_nedeni': row['talep_nedeni'],
                         'talep_durumu': row['talep_durumu'],
-                        'talep_tarihi': row['talep_tarihi'].strftime('%Y-%m-%d %H:%M:%S') if row[
-                            'talep_tarihi'] else '-'
+                        'talep_tarihi': row['talep_tarihi'].strftime('%Y-%m-%d %H:%M:%S') if row['talep_tarihi'] else '-'
                     } for row in cursor.fetchall()
                 ]
     except mysql.connector.Error as db_err:
@@ -639,8 +784,6 @@ def iptal_talep(siparis_id):
         flash(f"İptal talebi hatası: {str(e)}", 'danger')
         logger.error(f"İptal talebi hatası: {str(e)}")
         return redirect(url_for('siparisler'))
-
-
 @app.route('/odeme/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def odeme(siparis_id):
@@ -652,14 +795,15 @@ def odeme(siparis_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-
-            # Sipariş bilgilerini al
             cursor.execute("""
-                           SELECT siparis_id, toplam_fiyat, durum
-                           FROM siparisler
-                           WHERE siparis_id = %s
-                             AND kullanici_id = %s
-                           """, (siparis_id, current_user.id))
+                SELECT s.siparis_id, s.toplam_fiyat, s.durum, u.urun_adi, s.miktar, 
+                       ro.deger AS renk_adi, co.deger AS cam_tipi_adi
+                FROM siparisler s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                LEFT JOIN urun_ozellikleri ro ON s.renk_ozellik_id = ro.ozellik_id AND ro.ozellik_tipi = 'renk'
+                LEFT JOIN urun_ozellikleri co ON s.cam_tipi_ozellik_id = co.ozellik_id AND co.ozellik_tipi = 'cam_tipi'
+                WHERE s.siparis_id = %s AND s.kullanici_id = %s
+            """, (siparis_id, current_user.id))
             siparis = cursor.fetchone()
 
             if not siparis:
@@ -670,59 +814,135 @@ def odeme(siparis_id):
                 flash('Bu sipariş zaten ödenmiş.', 'warning')
                 return redirect(url_for('siparisler'))
 
-            # Form verilerini doldur
-            form.siparis_id.data = siparis['siparis_id']
-            form.tutar.data = float(siparis['toplam_fiyat'] or 0.00)
+            if not siparis['toplam_fiyat'] or siparis['toplam_fiyat'] == 0:
+                flash(f"{siparis['urun_adi']} siparişi için toplam fiyat sıfır veya tanımlı değil.", 'danger')
+                return redirect(url_for('siparisler'))
 
-            # Ödeme geçmişi (logs tablosundan)
+            urun_adi = siparis['urun_adi'] or 'Bilinmeyen Ürün'
+            renk_adi = siparis['renk_adi'] or 'Standart'
+            cam_tipi_adi = siparis['cam_tipi_adi'] or 'Standart'
+
             cursor.execute("""
-                           SELECT tarih, islem
-                           FROM logs
-                           WHERE kullanici_id = %s
-                             AND islem LIKE '%Ödeme yapıldı%'
-                           ORDER BY tarih DESC
-                           LIMIT 10
-                           """, (current_user.id,))
+                SELECT kart_id, kart_numarasi, kart_sahibi_adi, card_token
+                FROM kartlar
+                WHERE kullanici_id = %s
+            """, (current_user.id,))
+            kartlar = cursor.fetchall()
+            form.kart_id.choices = [(0, "Kart seçin")] + [(k['kart_id'], f"{k['kart_sahibi_adi']} - {k['kart_numarasi']}") for k in kartlar]
+
+            cursor.execute("""
+                SELECT tarih, islem
+                FROM logs
+                WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
+                ORDER BY tarih DESC LIMIT 10
+            """, (current_user.id,))
             odeme_gecmisi = cursor.fetchall()
 
-            # Form gönderimi
             if form.validate_on_submit():
-                kart_numarasi = form.kart_numarasi.data
-                son_kullanma_tarihi = form.son_kullanma_tarihi.data
-                cvv = form.cvv.data
+                kart_id = form.kart_id.data
+                if not kart_id or kart_id == 0:
+                    flash('Lütfen bir kart seçin.', 'danger')
+                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
 
-                # Basit kart doğrulama (gerçek uygulamada ödeme ağ geçidi kullanılmalı)
-                if len(kart_numarasi) != 16 or not kart_numarasi.isdigit():
-                    flash('Geçersiz kart numarası. 16 haneli olmalı.', 'danger')
-                elif not son_kullanma_tarihi.match(r'^\d{2}/\d{2}$'):
-                    flash('Son kullanma tarihi MM/YY formatında olmalı.', 'danger')
-                elif len(cvv) != 3 or not cvv.isdigit():
-                    flash('CVV 3 haneli olmalı.', 'danger')
-                else:
-                    # Sipariş durumunu güncelle
-                    cursor.execute("""
-                                   UPDATE siparisler
-                                   SET durum             = 'Ödendi',
-                                       guncel_durum      = 'Ödendi',
-                                       guncelleme_tarihi = %s
-                                   WHERE siparis_id = %s
-                                   """, (datetime.now(), siparis_id))
+                cursor.execute("""
+                    SELECT card_token, kart_numarasi
+                    FROM kartlar
+                    WHERE kart_id = %s AND kullanici_id = %s
+                """, (kart_id, current_user.id))
+                kart = cursor.fetchone()
+                if not kart:
+                    flash('Seçilen kart bulunamadı.', 'danger')
+                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
 
-                    # Ödeme kaydını logs tablosuna ekle
-                    islem = f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']} TL"
+                # Ödeme işlemi
+                iyzico_client = iyzico.Client({
+                    'api_key': IYZICO_API_KEY,
+                    'secret_key': IYZICO_SECRET_KEY,
+                    'base_url': IYZICO_BASE_URL
+                })
+                request = {
+                    'price': str(siparis['toplam_fiyat']),
+                    'paidPrice': str(siparis['toplam_fiyat']),
+                    'currency': 'TRY',
+                    'basketId': str(siparis_id),
+                    'paymentCard': {
+                        'cardToken': kart['card_token'] if kart['card_token'] else None,
+                        'cardNumber': kart['kart_numarasi'].replace(' ', '') if not kart['card_token'] else None,
+                        'expireMonth': None,
+                        'expireYear': None,
+                        'cvc': None,
+                        'cardHolderName': None
+                    },
+                    'buyer': {
+                        'id': str(current_user.id),
+                        'name': current_user.ad,
+                        'surname': '',
+                        'email': current_user.email
+                    },
+                    'billingAddress': {
+                        'contactName': current_user.ad,
+                        'city': 'Istanbul',
+                        'country': 'Turkey',
+                        'address': 'N/A'
+                    },
+                    'basketItems': [{
+                        'id': str(siparis['siparis_id']),
+                        'name': urun_adi,
+                        'category1': 'PVC',
+                        'itemType': 'PHYSICAL',
+                        'price': str(siparis['toplam_fiyat'])
+                    }]
+                }
+                try:
+                    response = iyzico_client.create_payment(request)
+                    if response['status'] != 'success':
+                        flash('Ödeme başarısız: ' + response.get('errorMessage', 'Hata oluştu.'), 'danger')
+                        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
+
+                    # Ödeme başarılı, siparişi güncelle
                     cursor.execute("""
-                                   INSERT INTO logs (kullanici_id, islem, tarih)
-                                   VALUES (%s, %s, %s)
-                                   """, (current_user.id, islem, datetime.now()))
+                        UPDATE siparisler
+                        SET durum = 'Ödendi', guncel_durum = 'Ödendi', guncelleme_tarihi = %s
+                        WHERE siparis_id = %s
+                    """, (datetime.now(), siparis_id))
+
+                    islem = f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']:.2f} TL"
+                    cursor.execute("""
+                        INSERT INTO logs (kullanici_id, islem, tarih)
+                        VALUES (%s, %s, %s)
+                    """, (current_user.id, islem, datetime.now()))
 
                     connection.commit()
                     flash('Ödeme başarıyla tamamlandı!', 'success')
                     return redirect(url_for('siparisler'))
 
+                except Exception as e:
+                    if kart['card_token'] is None:  # Sahte kart (test modu)
+                        cursor.execute("""
+                            UPDATE siparisler
+                            SET durum = 'Ödendi', guncel_durum = 'Ödendi', guncelleme_tarihi = %s
+                            WHERE siparis_id = %s
+                        """, (datetime.now(), siparis_id))
+                        islem = f"Test ödemesi yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']:.2f} TL"
+                        cursor.execute("""
+                            INSERT INTO logs (kullanici_id, islem, tarih)
+                            VALUES (%s, %s, %s)
+                        """, (current_user.id, islem, datetime.now()))
+                        connection.commit()
+                        flash('Test ödemesi başarıyla tamamlandı!', 'success')
+                        return redirect(url_for('siparisler'))
+                    flash(f'Ödeme hatası: {str(e)}', 'danger')
+                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
+
+            form.siparis_id.data = siparis['siparis_id']
+            form.tutar.data = float(siparis['toplam_fiyat'])
             return render_template(
                 'odeme.html',
                 form=form,
-                odeme_gecmisi=odeme_gecmisi
+                odeme_gecmisi=odeme_gecmisi,
+                urun_adi=urun_adi,
+                renk_adi=renk_adi,
+                cam_tipi_adi=cam_tipi_adi
             )
 
     except Exception as e:
@@ -730,8 +950,25 @@ def odeme(siparis_id):
         return render_template(
             'odeme.html',
             form=form,
-            odeme_gecmisi=[]
+            odeme_gecmisi=[],
+            urun_adi='Bilinmeyen Ürün',
+            renk_adi='Standart',
+            cam_tipi_adi='Standart'
         )
+
+def is_valid_luhn(card_number):
+    """Luhn algoritması ile kart numarasını doğrula."""
+    digits = [int(d) for d in card_number]
+    checksum = 0
+    is_even = False
+    for digit in digits[::-1]:
+        if is_even:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        checksum += digit
+        is_even = not is_even
+    return checksum % 10 == 0
 def get_adopen_pvc_products():
     url = "https://www.adopen.com.tr/pvc-pencere-sistemleri"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -1377,28 +1614,6 @@ def kullanici_sil(kullanici_id):
     except Exception as e:
         flash(f"Kullanıcı silme hatası: {str(e)}", 'danger')
         return redirect(url_for('admin_kullanicilar'))
-@app.route('/takip/<int:siparis_id>')
-@login_required
-def takip(siparis_id):
-    try:
-        with get_db_connection() as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT s.siparis_id, s.urun_id, u.urun_adi, s.miktar, s.siparis_tarihi, s.durum, 
-                       s.takip_kodu, s.satici_id, s2.ad AS satici_adi
-                FROM siparisler s
-                JOIN urunler u ON s.urun_id = u.urun_id
-                JOIN saticilar s2 ON s.satici_id = s2.satici_id
-                WHERE s.siparis_id = %s AND (s.kullanici_id = %s OR %s IN ('satici', 'admin'))
-            """, (siparis_id, current_user.id, current_user.rol))
-            siparis = cursor.fetchone()
-            if not siparis:
-                flash('Sipariş bulunamadı veya erişim izniniz yok.', 'danger')
-                return redirect(url_for('siparisler'))
-            return render_template('takip.html', siparis=siparis)
-    except Exception as e:
-        flash(f"Takip hatası: {str(e)}", 'danger')
-        return redirect(url_for('siparisler'))
 
 @app.route('/durum_guncelle/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
@@ -1455,6 +1670,101 @@ def durum_guncelle(siparis_id):
     except Exception as e:
         flash(f"Durum güncelleme hatası: {str(e)}", 'danger')
         return redirect(url_for('siparisler'))
+@app.route('/kart_ekle/<int:siparis_id>', methods=['GET', 'POST'])
+@login_required
+def kart_ekle(siparis_id):
+    form = KartEkleForm()
+    try:
+        with get_db_connection() as connection:
+            cursor = connection.cursor(dictionary=True)
+            if form.validate_on_submit():
+                kart_numarasi = form.kart_numarasi.data.replace(' ', '')
+                son_kullanma_tarihi = form.son_kullanma_tarihi.data
+                cvv = form.cvv.data
+                kart_sahibi_adi = form.kart_sahibi_adi.data
 
+                # Kart numarası doğrulama
+                if len(kart_numarasi) != 16 or not kart_numarasi.isdigit():
+                    flash('Kart numarası tam 16 haneli olmalı ve sadece rakamlardan oluşmalı.', 'danger')
+                    return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+                # Son kullanma tarihi doğrulama
+                if not re.match(r'^(0[1-9]|1[0-2])/[0-9]{2}$', son_kullanma_tarihi):
+                    flash('Son kullanma tarihi MM/YY formatında olmalı (örn. 12/25).', 'danger')
+                    return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+                # CVV doğrulama
+                if len(cvv) != 3 or not cvv.isdigit():
+                    flash('CVV 3 haneli olmalı ve sadece rakamlardan oluşmalı.', 'danger')
+                    return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+                # Luhn algoritması (sahte kartlar için)
+                if not is_valid_luhn(kart_numarasi):
+                    flash('Geçersiz kart numarası. Lütfen geçerli bir kart girin.', 'danger')
+                    return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+                # Gerçek kartlar için Iyzico ile kart doğrulama
+                try:
+                    iyzico_client = iyzico.Client({
+                        'api_key': IYZICO_API_KEY,
+                        'secret_key': IYZICO_SECRET_KEY,
+                        'base_url': IYZICO_BASE_URL
+                    })
+                    request = {
+                        'card': {
+                            'cardHolderName': kart_sahibi_adi,
+                            'cardNumber': kart_numarasi,
+                            'expireMonth': son_kullanma_tarihi.split('/')[0],
+                            'expireYear': '20' + son_kullanma_tarihi.split('/')[1],
+                            'cvc': cvv
+                        }
+                    }
+                    response = iyzico_client.create_card(request)
+                    if response['status'] != 'success':
+                        flash('Kart doğrulama başarısız: ' + response.get('errorMessage', 'Hata oluştu.'), 'danger')
+                        return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+                    # Iyzico'dan alınan kart token'ını kaydet
+                    card_token = response['cardToken']
+                    cursor.execute("""
+                        INSERT INTO kartlar (kullanici_id, kart_numarasi, son_kullanma_tarihi, cvv, kart_sahibi_adi, card_token)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (current_user.id, '**** **** **** ' + kart_numarasi[-4:], son_kullanma_tarihi, cvv, kart_sahibi_adi, card_token))
+                    connection.commit()
+                    flash('Kart başarıyla eklendi.', 'success')
+                    return redirect(url_for('odeme', siparis_id=siparis_id))
+
+                except Exception as e:
+                    # Iyzico doğrulama başarısızsa, sahte kart olarak kabul et (test için)
+                    if 'TEST_MODE' in request.form:
+                        cursor.execute("""
+                            INSERT INTO kartlar (kullanici_id, kart_numarasi, son_kullanma_tarihi, cvv, kart_sahibi_adi)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (current_user.id, form.kart_numarasi.data, son_kullanma_tarihi, cvv, kart_sahibi_adi))
+                        connection.commit()
+                        flash('Test kartı başarıyla eklendi.', 'success')
+                        return redirect(url_for('odeme', siparis_id=siparis_id))
+                    else:
+                        flash(f'Kart doğrulama hatası: {str(e)}', 'danger')
+                        return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+            return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+    except Exception as e:
+        flash(f'Kart ekleme hatası: {str(e)}', 'danger')
+        return render_template('kart_ekle.html', form=form, siparis_id=siparis_id)
+
+def is_valid_luhn(card_number):
+    """Luhn algoritması ile kart numarasını doğrula."""
+    digits = [int(d) for d in card_number]
+    checksum = 0
+    is_even = False
+    for digit in digits[::-1]:
+        if is_even:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        checksum += digit
+        is_even = not is_even
+    return checksum % 10 == 0
 if __name__ == '__main__':
     app.run(debug=True)
