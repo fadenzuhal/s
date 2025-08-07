@@ -1,5 +1,7 @@
 import re
 from venv import logger
+
+import iyzipay
 from flask_login import  login_user, logout_user
 from decimal import Decimal
 import mysql.connector
@@ -295,8 +297,6 @@ def hata_sil(hata_id):
     except Exception as e:
         flash(f"Hata oluştu: {str(e)}", 'danger')
         return redirect(url_for('index'))
-
-
 @app.route('/sepet_ekle', methods=['GET', 'POST'])
 @login_required
 def sepet_ekle():
@@ -307,27 +307,46 @@ def sepet_ekle():
 
             # Ürün ve satıcı seçeneklerini doldur
             cursor.execute("SELECT urun_id, urun_adi FROM urunler ORDER BY urun_adi")
-            form.urun_adi.choices = [(0, "Ürün seçin")] + [(row['urun_id'], row['urun_adi']) for row in
-                                                           cursor.fetchall()]
+            form.urun_adi.choices = [(0, "Ürün seçin")] + [(row['urun_id'], row['urun_adi']) for row in cursor.fetchall()]
             cursor.execute("SELECT satici_id, ad FROM saticilar ORDER BY ad")
-            form.satici_adi.choices = [(0, "Satıcı seçin")] + [(row['satici_id'], row['ad']) for row in
-                                                               cursor.fetchall()]
+            form.satici_adi.choices = [(0, "Satıcı seçin")] + [(row['satici_id'], row['ad']) for row in cursor.fetchall()]
 
-            # Renk ve cam tipi seçenekleri (başlangıçta boş)
+            # Renk ve cam tipi seçenekleri (başlangıçta varsayılan)
             form.renk_ozellik_id.choices = [(0, "Renk seçin")]
             form.cam_tipi_ozellik_id.choices = [(0, "Cam tipi seçin")]
+
+            if request.method == 'POST':
+                urun_id = form.urun_adi.data
+                if urun_id and urun_id != '0':
+                    # Ürün seçildiğinde renk ve cam tipi seçeneklerini yükle
+                    cursor.execute("""
+                        SELECT ozellik_id, deger, fiyat_ekleme
+                        FROM urun_ozellikleri
+                        WHERE urun_id = %s AND ozellik_tipi = 'renk'
+                    """, (urun_id,))
+                    renkler = cursor.fetchall()
+                    cursor.execute("""
+                        SELECT ozellik_id, deger, fiyat_ekleme
+                        FROM urun_ozellikleri
+                        WHERE urun_id = %s AND ozellik_tipi = 'cam_tipi'
+                    """, (urun_id,))
+                    cam_tipleri = cursor.fetchall()
+
+                    # Form choices listesini güncelle
+                    form.renk_ozellik_id.choices = [(0, "Renk seçin")] + [(str(row['ozellik_id']), f"{row['deger']} (+{row['fiyat_ekleme']} TL)") for row in renkler]
+                    form.cam_tipi_ozellik_id.choices = [(0, "Cam tipi seçin")] + [(str(row['ozellik_id']), f"{row['deger']} (+{row['fiyat_ekleme']} TL)") for row in cam_tipleri]
 
             if form.validate_on_submit():
                 urun_id = form.urun_adi.data
                 satici_id = form.satici_adi.data
                 miktar = form.miktar.data
-                renk_ozellik_id = form.renk_ozellik_id.data or None
-                cam_tipi_ozellik_id = form.cam_tipi_ozellik_id.data or None
+                renk_ozellik_id = form.renk_ozellik_id.data if form.renk_ozellik_id.data != '0' else None
+                cam_tipi_ozellik_id = form.cam_tipi_ozellik_id.data if form.cam_tipi_ozellik_id.data != '0' else None
 
-                if not urun_id or urun_id == 0:
+                if not urun_id or urun_id == '0':
                     flash('Lütfen bir ürün seçin.', 'danger')
                     return render_template('sepet_ekle.html', form=form)
-                if satici_id == 0:
+                if satici_id == '0':
                     flash('Lütfen bir satıcı seçin.', 'danger')
                     return render_template('sepet_ekle.html', form=form)
                 if miktar < 1:
@@ -341,8 +360,7 @@ def sepet_ekle():
                     flash('Ürün bulunamadı.', 'danger')
                     return render_template('sepet_ekle.html', form=form)
                 if urun['stok'] < miktar:
-                    flash(f"{urun['urun_adi']} için yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {miktar}).",
-                          'danger')
+                    flash(f"{urun['urun_adi']} için yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {miktar}).", 'danger')
                     return render_template('sepet_ekle.html', form=form)
 
                 # Fiyat hesaplama
@@ -368,10 +386,9 @@ def sepet_ekle():
 
                 # Sepete ekle
                 cursor.execute("""
-                               INSERT INTO sepet (kullanici_id, urun_id, miktar, satici_id, renk_ozellik_id,
-                                                  cam_tipi_ozellik_id)
-                               VALUES (%s, %s, %s, %s, %s, %s)
-                               """, (current_user.id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id))
+                    INSERT INTO sepet (kullanici_id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (current_user.id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id))
                 connection.commit()
                 flash(f"{urun['urun_adi']} sepete eklendi.", 'success')
                 return redirect(url_for('sepet'))
@@ -380,7 +397,6 @@ def sepet_ekle():
     except Exception as e:
         flash(f"Sepete ekleme hatası: {str(e)}", 'danger')
         return render_template('sepet_ekle.html', form=form)
-
 
 @app.route('/get_ozellikler', methods=['POST'])
 def get_ozellikler():
@@ -855,7 +871,7 @@ def odeme(siparis_id):
                     return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
 
                 # Ödeme işlemi
-                iyzico_client = iyzico.Client({
+                iyzico_client = iyzipay.Client({
                     'api_key': IYZICO_API_KEY,
                     'secret_key': IYZICO_SECRET_KEY,
                     'base_url': IYZICO_BASE_URL
@@ -1705,7 +1721,7 @@ def kart_ekle(siparis_id):
 
                 # Gerçek kartlar için Iyzico ile kart doğrulama
                 try:
-                    iyzico_client = iyzico.Client({
+                    iyzico_client = iyzipay.Client({
                         'api_key': IYZICO_API_KEY,
                         'secret_key': IYZICO_SECRET_KEY,
                         'base_url': IYZICO_BASE_URL
