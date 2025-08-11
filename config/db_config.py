@@ -9,7 +9,7 @@ def get_db_connection():
             host='localhost',
             port=3306,
             user='root',
-            password='mavimor32',
+            password='xxxxxxx',
             database='adopen_hata'
         )
         return connection
