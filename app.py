@@ -8,24 +8,21 @@ import mysql.connector
 import requests,os
 from bs4 import BeautifulSoup
 from werkzeug.utils import secure_filename
-from config.db_config import  get_dropdown_choices
 from models.ContactForm import ContactForm
-from models.DurumGuncelleForm import DurumGuncelleForm
+from models.DogrulamaForm import DogrulamaForm
 from models.HataForm import HataForm
 from models.KartEkleForm import KartEkleForm
 from models.LoginForm import LoginForm
-from models.OdemeForm import OdemeForm
 from models.ProfilGuncelleForm import ProfilGuncelleForm
 from models.PuanForm import PuanForm
 from models.SepetEkleForm import SepetEkleForm
-from models.SepetForm import SepetForm
 from models.UrunForm import UrunForm
 from models.User import User
 from flask import Flask, flash, redirect, render_template, url_for, request, current_app, jsonify
 from flask_login import LoginManager, login_required, current_user
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 from config.db_config import get_db_connection
 from models.TalepForm import TalepForm
 
@@ -92,21 +89,72 @@ def load_user(user_id):
 
 
 # Giriş rotası
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # Eğer kullanıcı zaten giriş yapmışsa, ana sayfaya yönlendir
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
 
-def __init__(self, *args, **kwargs):
-        super(HataForm, self).__init__(*args, **kwargs)
-        urunler, bayiler, alicilar, saticilar = get_dropdown_choices()
-        self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
-        self.bayi_adi.choices = bayiler or [('0', 'Bayi bulunamadı')]
-        self.alici_adi.choices = [('', 'Seçiniz')] + (alicilar or [])
-        self.satici_adi.choices = [('', 'Seçiniz')] + (saticilar or [])
-def __init__(self, *args, **kwargs):
-        super(SepetForm, self).__init__(*args, **kwargs)
-        urunler, _, _, saticilar = get_dropdown_choices()
-        self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
-        self.satici_adi.choices = saticilar or [('0', 'Satıcı bulunamadı')]
+    login_form = LoginForm()
+    contact_form = ContactForm()
+
+    # İletişim formu gönderimi
+    if contact_form.validate_on_submit():
+        try:
+            with get_db_connection() as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "INSERT INTO iletisim_mesajlari (ad, email, mesaj, tarih) VALUES (%s, %s, %s, %s)",
+                    (contact_form.ad.data, contact_form.email.data, contact_form.mesaj.data, datetime.now())
+                )
+                connection.commit()
+                flash('Mesajınız başarıyla gönderildi!', 'success')
+                email_body = f"""
+                <h3>Merhaba {contact_form.ad.data},</h3>
+                <p>İletişim formunuz başarıyla gönderildi. Mesajınız:</p>
+                <p>{contact_form.mesaj.data}</p>
+                <p>En kısa sürede size geri dönüş yapacağız.</p>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(contact_form.email.data, "Adopen - İletişim Formu Gönderildi", email_body)
+        except Exception as e:
+            flash(f"Mesaj gönderilirken hata: {str(e)}", 'danger')
+            logger.error(f"İletişim formu hatası: {str(e)}")
+        return redirect(url_for('login'))
+
+    # Giriş formu gönderimi
+    if login_form.validate_on_submit():
+        try:
+            with get_db_connection() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute(
+                    "SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s",
+                    (login_form.email.data,)
+                )
+                user = cursor.fetchone()
+                # Parola doğrudan karşılaştırılıyor (hashing yok)
+                if user and user['sifre'] == login_form.password.data:
+                    user_obj = User(user['kullanici_id'], user['email'], user['ad'], user['rol'])
+                    login_user(user_obj)
+                    flash('Giriş başarılı! Hoş geldiniz.', 'success')
+                    email_body = f"""
+                    <h3>Merhaba {user['ad']},</h3>
+                    <p>Hesabınıza {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} tarihinde giriş yapıldı.</p>
+                    <p>Eğer bu işlemi siz gerçekleştirmediyseniz, lütfen hemen bizimle iletişime geçin.</p>
+                    <p>Adopen Ekibi</p>
+                    """
+                    send_email(user['email'], "Adopen - Başarılı Giriş Bildirimi", email_body)
+                    return redirect(url_for('index'))
+                else:
+                    flash('E-posta veya şifre yanlış.', 'danger')
+        except Exception as e:
+            flash(f"Giriş hatası: {str(e)}", 'danger')
+            logger.error(f"Giriş hatası: {str(e)}")
+
+    return render_template('login.html', login_form=login_form, contact_form=contact_form)
 
 
+# Kayıt rotası
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     from flask_login import current_user
@@ -144,14 +192,53 @@ def register():
             logger.error(f"Kayıt hatası: {str(e)}")
 
     return render_template('register.html')
+
+
+# Çıkış rotası
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash('Çıkış yapıldı.', 'success')
     return redirect(url_for('login'))
+@app.route('/dogrula', methods=['GET', 'POST'])
+def dogrula():
+    form = DogrulamaForm()
+    if form.validate_on_submit():
+        try:
+            with get_db_connection() as connection:
+                cursor = connection.cursor(dictionary=True)
+                kod = form.kod.data
+                simdi = datetime.now()
 
+                # En son geçerli kodu kontrol et (kullanıcı e-postası veya session ile bağla, burada basitçe son kodu varsayalım; gerçekte session veya email ile filtrele)
+                cursor.execute(
+                    "SELECT id, kullanici_id FROM dogrulama_kodlari WHERE kod = %s AND gecerlilik_suresi > %s ORDER BY olusturma_tarihi DESC LIMIT 1",
+                    (kod, simdi)
+                )
+                dogrulama = cursor.fetchone()
+                if not dogrulama:
+                    flash('Geçersiz veya süresi dolmuş kod. Lütfen tekrar deneyin.', 'danger')
+                    return render_template('dogrula.html', form=form)
 
+                # Hesabı doğrula
+                cursor.execute("UPDATE kullanicilar SET dogrulandi = 1 WHERE kullanici_id = %s",
+                               (dogrulama['kullanici_id'],))
+                connection.commit()
+
+                # Kodu sil (kullanıldıktan sonra)
+                cursor.execute("DELETE FROM dogrulama_kodlari WHERE id = %s", (dogrulama['id'],))
+                connection.commit()
+
+                flash('Hesabınız doğrulandı! Şimdi giriş yapabilirsiniz.', 'success')
+                return redirect(url_for('login'))
+        except Exception as e:
+            flash(f"Doğrulama hatası: {str(e)}", 'danger')
+
+    return render_template('dogrula.html', form=form)
+
+@app.route('/')
+# Ana sayfa rotası
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -205,9 +292,6 @@ def index():
         flash(f"Hata: {str(e)}", 'danger')
         logger.error(f"Index hatası: {str(e)}")
         return render_template('index.html', hatalar=[], odeme_gecmisi=[], bakiye=0.00)
-
-
-# Hata ekleme rotası
 @app.route('/hata_ekle', methods=['GET', 'POST'])
 @login_required
 def hata_ekle():
