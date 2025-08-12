@@ -26,6 +26,7 @@
             {% endif %}
         {% endwith %}
         <form method="POST" action="{{ url_for('puanla', siparis_id=siparis_id) }}">
+            {{ form.hidden_tag() }}
             <div class="mb-3">
                 <label>Satıcıyı 5 yıldız üzerinden puanlayın:</label>
                 <div class="stars" id="rating">
@@ -33,7 +34,11 @@
                         <span class="star" data-value="{{ i }}">★</span>
                     {% endfor %}
                 </div>
-                <input type="hidden" name="puan" id="puan" value="">
+                {{ form.puan(id="puan", type="hidden") }}
+            </div>
+            <div class="mb-3">
+                <label for="yorum" class="form-label">Yorum (isteğe bağlı):</label>
+                {{ form.yorum(class="form-control", rows=4) }}
             </div>
             <button type="submit" class="btn btn-primary">Puanla</button>
             <a href="{{ url_for('siparisler') }}" class="btn btn-secondary">Geri Dön</a>
@@ -53,6 +58,12 @@
                     stars[i].classList.add('checked');
                 }
             });
+        });
+        // Varsayılan olarak yıldızları sıfırla
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!puanInput.value) {
+                stars.forEach(s => s.classList.remove('checked'));
+            }
         });
     </script>
 </body>

@@ -1,13 +1,16 @@
-
 from flask_wtf import FlaskForm
-from wtforms import SelectField
-from wtforms.validators import DataRequired
+from wtforms import StringField, SelectField
+from wtforms.validators import Optional
 
 class DurumGuncelleForm(FlaskForm):
-    durum = SelectField('Sipariş Durumu', choices=[
+    durum = SelectField('Durum', choices=[
         ('Bekliyor', 'Bekliyor'),
-        ('Hazırlanıyor', 'Hazırlanıyor'),
         ('Onaylandı', 'Onaylandı'),
+        ('Hazırlanıyor', 'Hazırlanıyor'),
+        ('Kargoda', 'Kargoda'),
         ('Teslim Edildi', 'Teslim Edildi'),
-        ('İptal Edildi', 'İptal Edildi')
-    ], validators=[DataRequired()])
+        ('İptal Edildi', 'İptal Edildi'),
+        ('İade Edildi', 'İade Edildi'),
+        ('Tamamlandı', 'Tamamlandı')
+    ])
+    takip_kodu = StringField('Takip Kodu', validators=[Optional()])

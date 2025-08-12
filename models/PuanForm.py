@@ -1,8 +1,7 @@
-# models/PuanForm.py
 from flask_wtf import FlaskForm
-from wtforms import SelectField, TextAreaField, SubmitField
-from wtforms.validators import DataRequired, NumberRange
+from wtforms import IntegerField, TextAreaField
+from wtforms.validators import DataRequired, NumberRange, Optional
 
 class PuanForm(FlaskForm):
-    puan = SelectField('Puan (1-5)', choices=[('1', '1'), ('2', '2'), ('3', '3'), ('4', '4'), ('5', '5')], validators=[DataRequired()])
-    submit = SubmitField('Puanla')
+    puan = IntegerField('Puan', validators=[DataRequired(), NumberRange(min=1, max=5)])
+    yorum = TextAreaField('Yorum', validators=[Optional()])
