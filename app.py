@@ -1,4 +1,6 @@
+import random
 import re
+import string
 from venv import logger
 import iyzipay
 from flask_login import  login_user, logout_user
@@ -14,6 +16,7 @@ from models.KartEkleForm import KartEkleForm
 from models.LoginForm import LoginForm
 from models.OdemeForm import OdemeForm
 from models.ProfilGuncelleForm import ProfilGuncelleForm
+from models.PuanForm import PuanForm
 from models.SepetEkleForm import SepetEkleForm
 from models.SepetForm import SepetForm
 from models.UrunForm import UrunForm
@@ -26,38 +29,44 @@ from datetime import datetime
 from config.db_config import get_db_connection
 from models.TalepForm import TalepForm
 
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 load_dotenv()
 # Flask yapılandırması
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '1234567890')
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp-mail.outlook.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'
-app.config['MAIL_USERNAME'] = os.getenv('EMAIL_ADDRESS')
-app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('EMAIL_ADDRESS')
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
+
 IYZICO_API_KEY = 'xx-xxxxx-xxx'
 IYZICO_SECRET_KEY = 'xxxxx-xxxxxx'
 IYZICO_BASE_URL = 'https://sandbox-api.iyzipay.com'
 mail = Mail(app)
-# Flask-Login ayarları
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', '1234567890')
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'adopen.admn07@gmail.com'
+app.config['MAIL_PASSWORD'] = 'mukshpweawyqmcoi'
+app.config['MAIL_DEFAULT_SENDER'] = 'adopen.admn07@gmail.com'
+
+mail = Mail(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+
 # E-posta gönderme fonksiyonu
 def send_email(to, subject, body):
     try:
-        msg = Message(subject, recipients=[to])
+        msg = Message(subject, recipients=[to], sender=app.config['MAIL_DEFAULT_SENDER'])
         msg.html = body
         mail.send(msg)
-        print(f"E-posta gönderildi: {to}")
+        logger.info(f"E-posta gönderildi: {to}, Konu: {subject}")
         return True
     except Exception as e:
-        print(f"E-posta gönderme hatası: {str(e)}")
+        logger.error(f"E-posta gönderme hatası: {to}, Hata: {str(e)}")
+        return False
 
-
+def generate_verification_code(length=6):
+    return ''.join(random.choices(string.digits, k=length))
+# Kullanıcı yükleme fonksiyonu
 @login_manager.user_loader
 def load_user(user_id):
     try:
@@ -78,8 +87,11 @@ def load_user(user_id):
                 )
             return None
     except Exception as e:
-        print(f"Kullanıcı yükleme hatası: {str(e)}")
+        logger.error(f"Kullanıcı yükleme hatası: {str(e)}")
         return None
+
+
+# Giriş rotası
 
 def __init__(self, *args, **kwargs):
         super(HataForm, self).__init__(*args, **kwargs)
@@ -94,50 +106,14 @@ def __init__(self, *args, **kwargs):
         self.urun_adi.choices = urunler or [('0', 'Ürün bulunamadı')]
         self.satici_adi.choices = saticilar or [('0', 'Satıcı bulunamadı')]
 
-# Rotalar
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    login_form = LoginForm()
-    contact_form = ContactForm()
-
-    if contact_form.validate_on_submit():
-        try:
-            with get_db_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute("INSERT INTO iletisim_mesajlari (ad, email, mesaj, tarih) VALUES (%s, %s, %s, %s)",
-                              (contact_form.ad.data, contact_form.email.data, contact_form.mesaj.data, datetime.now()))
-                connection.commit()
-                flash('Mesajınız başarıyla gönderildi!', 'success')
-        except Exception as e:
-            flash(f"Mesaj gönderilirken hata: {str(e)}", 'danger')
-        return redirect(url_for('login'))
-
-    if login_form.validate_on_submit():
-        try:
-            with get_db_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute("SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s", (login_form.email.data,))
-                user = cursor.fetchone()
-                if user:
-                    if user['sifre'] == login_form.password.data:
-                        user_obj = User(user['kullanici_id'], user['email'], user['ad'], user['rol'])
-                        login_user(user_obj)
-                        flash('Giriş başarılı! Hoş geldiniz.', 'success')
-                        return redirect(url_for('index'))
-                    else:
-                        flash('Şifre yanlış.', 'danger')
-                else:
-                    flash('E-posta kayıtlı değil.', 'danger')
-        except Exception as e:
-            flash(f"Giriş hatası: {str(e)}", 'danger')
-    return render_template('login.html', login_form=login_form, contact_form=contact_form)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    from flask_login import current_user
+    # Eğer kullanıcı zaten giriş yapmışsa, ana sayfaya yönlendir
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+
     if request.method == 'POST':
         try:
             with get_db_connection() as connection:
@@ -147,21 +123,34 @@ def register():
                 if cursor.fetchone():
                     flash('Bu e-posta zaten kayıtlı.', 'danger')
                     return render_template('register.html')
-                cursor.execute("INSERT INTO kullanicilar (email, sifre, ad, rol, bakiye) VALUES (%s, %s, %s, %s, 0.00)",
-                              (email, sifre, ad, 'alici'))
+                # Parola düz metin olarak kaydediliyor (hashing yok)
+                cursor.execute(
+                    "INSERT INTO kullanicilar (email, sifre, ad, rol, bakiye) VALUES (%s, %s, %s, %s, 0.00)",
+                    (email, sifre, ad, 'alici')
+                )
                 connection.commit()
                 flash('Kayıt başarılı! Lütfen giriş yapın.', 'success')
+                email_body = f"""
+                <h3>Merhaba {ad},</h3>
+                <p>Adopen platformuna hoş geldiniz! Hesabınız başarıyla oluşturuldu.</p>
+                <p>E-posta: {email}</p>
+                <p>Şimdi giriş yaparak alışverişe başlayabilirsiniz.</p>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(email, "Adopen - Hoş Geldiniz!", email_body)
                 return redirect(url_for('login'))
         except Exception as e:
             flash(f"Kayıt hatası: {str(e)}", 'danger')
-    return render_template('register.html')
+            logger.error(f"Kayıt hatası: {str(e)}")
 
+    return render_template('register.html')
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash('Çıkış yapıldı.', 'success')
     return redirect(url_for('login'))
+
 
 @app.route('/')
 @app.route('/index')
@@ -170,36 +159,55 @@ def index():
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
+            # Hata raporlarını getir
             cursor.execute("""
-                SELECT h.hata_id, u.urun_adi, b.bayi_adi, a.ad AS alici_adi, s.ad AS satici_adi, h.hata_tarihi, h.hata_turu, h.durum
-                FROM hatalar h
-                JOIN urunler u ON h.urun_id = u.urun_id
-                JOIN bayiler b ON h.bayi_id = b.bayi_id
-                LEFT JOIN alicilar a ON h.alici_id = a.alici_id
-                LEFT JOIN saticilar s ON h.satici_id = s.satici_id
-                WHERE h.kullanici_id = %s
-                ORDER BY h.hata_tarihi DESC
-            """, (current_user.id,))
+                           SELECT h.hata_id,
+                                  u.urun_adi,
+                                  b.bayi_adi,
+                                  a.ad AS alici_adi,
+                                  s.ad AS satici_adi,
+                                  h.hata_tarihi,
+                                  h.hata_turu,
+                                  h.durum
+                           FROM hatalar h
+                                    JOIN urunler u ON h.urun_id = u.urun_id
+                                    JOIN bayiler b ON h.bayi_id = b.bayi_id
+                                    LEFT JOIN alicilar a ON h.alici_id = a.alici_id
+                                    LEFT JOIN saticilar s ON h.satici_id = s.satici_id
+                           WHERE h.kullanici_id = %s
+                           ORDER BY h.hata_tarihi DESC
+                           """, (current_user.id,))
             hatalar = cursor.fetchall()
-            cursor.execute("SELECT islem, tarih FROM logs WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%' ORDER BY tarih DESC",
-                          (current_user.id,))
+
+            # Ödeme geçmişini getir
+            cursor.execute(
+                "SELECT islem, tarih FROM logs WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%' ORDER BY tarih DESC",
+                (current_user.id,)
+            )
             odeme_gecmisi = [
                 {
                     'tarih': row['tarih'].strftime('%Y-%m-%d %H:%M:%S') if row['tarih'] else '-',
                     'islem': row['islem'],
-                    'siparis_id': row['islem'].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row['islem'] else '-',
+                    'siparis_id': row['islem'].split('Sipariş ID ')[1].split(', Tutar ')[0] if 'Sipariş ID ' in row[
+                        'islem'] else '-',
                     'tutar': row['islem'].split('Tutar ')[1].split(' TL')[0] if 'Tutar ' in row['islem'] else '-'
                 } for row in cursor.fetchall()
             ]
+
+            # Kullanıcı bakiyesini getir
             bakiye = 0.00
             if current_user.rol == 'alici':
                 cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
                 bakiye = float(cursor.fetchone()['bakiye'] or 0.00)
+
             return render_template('index.html', hatalar=hatalar, odeme_gecmisi=odeme_gecmisi, bakiye=bakiye)
     except Exception as e:
         flash(f"Hata: {str(e)}", 'danger')
+        logger.error(f"Index hatası: {str(e)}")
         return render_template('index.html', hatalar=[], odeme_gecmisi=[], bakiye=0.00)
 
+
+# Hata ekleme rotası
 @app.route('/hata_ekle', methods=['GET', 'POST'])
 @login_required
 def hata_ekle():
@@ -227,8 +235,11 @@ def hata_ekle():
                 return redirect(url_for('index'))
         except Exception as e:
             flash(f"Hata oluştu: {str(e)}", 'danger')
+            logger.error(f"Hata ekleme hatası: {str(e)}")
     return render_template('hata_ekle.html', form=form)
 
+
+# Hata düzenleme rotası
 @app.route('/hata_duzenle/<int:hata_id>', methods=['GET', 'POST'])
 @login_required
 def hata_duzenle(hata_id):
@@ -236,13 +247,24 @@ def hata_duzenle(hata_id):
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute("""
-                SELECT hata_id, urun_id, bayi_id, alici_id, satici_id, hata_tarihi, hata_turu, aciklama, durum
-                FROM hatalar WHERE hata_id = %s AND kullanici_id = %s
-            """, (hata_id, current_user.id))
+                           SELECT hata_id,
+                                  urun_id,
+                                  bayi_id,
+                                  alici_id,
+                                  satici_id,
+                                  hata_tarihi,
+                                  hata_turu,
+                                  aciklama,
+                                  durum
+                           FROM hatalar
+                           WHERE hata_id = %s
+                             AND kullanici_id = %s
+                           """, (hata_id, current_user.id))
             hata = cursor.fetchone()
             if not hata:
                 flash('Hata raporu bulunamadı veya yetkiniz yok.', 'danger')
                 return redirect(url_for('index'))
+
             form = HataForm(
                 urun_adi=str(hata['urun_id']),
                 bayi_adi=str(hata['bayi_id']),
@@ -253,38 +275,49 @@ def hata_duzenle(hata_id):
                 aciklama=hata['aciklama'],
                 durum=hata['durum']
             )
+
             if form.validate_on_submit():
                 cursor.execute("""
-                    UPDATE hatalar
-                    SET urun_id = %s, bayi_id = %s, alici_id = %s, satici_id = %s, hata_tarihi = %s, hata_turu = %s, aciklama = %s, durum = %s
-                    WHERE hata_id = %s
-                """, (
-                    form.urun_adi.data,
-                    form.bayi_adi.data,
-                    form.alici_adi.data or None,
-                    form.satici_adi.data or None,
-                    form.hata_tarihi.data,
-                    form.hata_turu.data,
-                    form.aciklama.data,
-                    form.durum.data,
-                    hata_id
-                ))
+                               UPDATE hatalar
+                               SET urun_id     = %s,
+                                   bayi_id     = %s,
+                                   alici_id    = %s,
+                                   satici_id   = %s,
+                                   hata_tarihi = %s,
+                                   hata_turu   = %s,
+                                   aciklama    = %s,
+                                   durum       = %s
+                               WHERE hata_id = %s
+                               """, (
+                                   form.urun_adi.data,
+                                   form.bayi_adi.data,
+                                   form.alici_adi.data or None,
+                                   form.satici_adi.data or None,
+                                   form.hata_tarihi.data,
+                                   form.hata_turu.data,
+                                   form.aciklama.data,
+                                   form.durum.data,
+                                   hata_id
+                               ))
                 connection.commit()
                 flash('Hata raporu başarıyla güncellendi!', 'success')
                 return redirect(url_for('index'))
+
             return render_template('hata_duzenle.html', form=form, hata_id=hata_id)
     except Exception as e:
         flash(f"Hata oluştu: {str(e)}", 'danger')
+        logger.error(f"Hata düzenleme hatası: {str(e)}")
         return redirect(url_for('index'))
-
 @app.route('/hata_sil/<int:hata_id>', methods=['GET'])
 @login_required
 def hata_sil(hata_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor()
-            cursor.execute("SELECT hata_id FROM hatalar WHERE hata_id = %s AND kullanici_id = %s",
-                          (hata_id, current_user.id))
+            cursor.execute(
+                "SELECT hata_id FROM hatalar WHERE hata_id = %s AND kullanici_id = %s",
+                (hata_id, current_user.id)
+            )
             if cursor.fetchone():
                 cursor.execute("DELETE FROM hatalar WHERE hata_id = %s", (hata_id,))
                 connection.commit()
@@ -294,6 +327,7 @@ def hata_sil(hata_id):
         return redirect(url_for('index'))
     except Exception as e:
         flash(f"Hata oluştu: {str(e)}", 'danger')
+        logger.error(f"Hata silme hatası: {str(e)}")
         return redirect(url_for('index'))
 @app.route('/sepet_ekle', methods=['GET', 'POST'])
 @login_required
@@ -396,33 +430,33 @@ def sepet_ekle():
         flash(f"Sepete ekleme hatası: {str(e)}", 'danger')
         return render_template('sepet_ekle.html', form=form)
 
+# Ürün özellikleri alma rotası
 @app.route('/get_ozellikler', methods=['POST'])
 def get_ozellikler():
     try:
         urun_id = request.form.get('urun_id', type=int)
         if not urun_id:
             return jsonify({'error': 'Ürün ID eksik'}), 400
-
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute("""
-                           SELECT ozellik_id, deger, fiyat_ekleme
-                           FROM urun_ozellikleri
-                           WHERE urun_id = %s
-                             AND ozellik_tipi = 'renk'
-                           """, (urun_id,))
+                SELECT ozellik_id, deger, fiyat_ekleme
+                FROM urun_ozellikleri
+                WHERE urun_id = %s AND ozellik_tipi = 'renk'
+            """, (urun_id,))
             renkler = cursor.fetchall()
             cursor.execute("""
-                           SELECT ozellik_id, deger, fiyat_ekleme
-                           FROM urun_ozellikleri
-                           WHERE urun_id = %s
-                             AND ozellik_tipi = 'cam_tipi'
-                           """, (urun_id,))
+                SELECT ozellik_id, deger, fiyat_ekleme
+                FROM urun_ozellikleri
+                WHERE urun_id = %s AND ozellik_tipi = 'cam_tipi'
+            """, (urun_id,))
             cam_tipleri = cursor.fetchall()
             return jsonify({'renkler': renkler, 'cam_tipleri': cam_tipleri})
     except Exception as e:
-        return jsonify({'error': str(e)})
+        logger.error(f"Özellik alma hatası: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
+# Sepet görüntüleme rotası
 @app.route('/sepet')
 @login_required
 def sepet():
@@ -431,55 +465,36 @@ def sepet():
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute("""
-                           SELECT s.sepet_id,
-                                  s.urun_id,
-                                  s.miktar,
-                                  s.satici_id,
-                                  s.renk_ozellik_id,
-                                  s.cam_tipi_ozellik_id,
-                                  u.urun_adi,
-                                  u.cari_fiyat
-                           FROM sepet s
-                                    JOIN urunler u ON s.urun_id = u.urun_id
-                           WHERE s.kullanici_id = %s
-                           """, (current_user.id,))
-
+                SELECT s.sepet_id, s.urun_id, s.miktar, s.satici_id, s.renk_ozellik_id, s.cam_tipi_ozellik_id,
+                       u.urun_adi, u.cari_fiyat
+                FROM sepet s JOIN urunler u ON s.urun_id = u.urun_id
+                WHERE s.kullanici_id = %s
+            """, (current_user.id,))
             for item in cursor.fetchall():
-                # Fiyat hesaplama
                 fiyat = float(item['cari_fiyat'] or 0.0)
                 renk_adi = None
                 cam_tipi_adi = None
-
-                # Renk özelliği fiyatını ekle
                 if item['renk_ozellik_id']:
-                    cursor.execute("""
-                                   SELECT deger, fiyat_ekleme
-                                   FROM urun_ozellikleri
-                                   WHERE ozellik_id = %s
-                                     AND ozellik_tipi = 'renk'
-                                   """, (item['renk_ozellik_id'],))
+                    cursor.execute(
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
+                        (item['renk_ozellik_id'],)
+                    )
                     renk = cursor.fetchone()
                     if renk:
                         fiyat += float(renk['fiyat_ekleme'] or 0.0)
                         renk_adi = renk['deger']
-
-                # Cam tipi özelliği fiyatını ekle
                 if item['cam_tipi_ozellik_id']:
-                    cursor.execute("""
-                                   SELECT deger, fiyat_ekleme
-                                   FROM urun_ozellikleri
-                                   WHERE ozellik_id = %s
-                                     AND ozellik_tipi = 'cam_tipi'
-                                   """, (item['cam_tipi_ozellik_id'],))
+                    cursor.execute(
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
+                        (item['cam_tipi_ozellik_id'],)
+                    )
                     cam = cursor.fetchone()
                     if cam:
                         fiyat += float(cam['fiyat_ekleme'] or 0.0)
                         cam_tipi_adi = cam['deger']
-
                 toplam = fiyat * item['miktar']
                 if toplam == 0:
                     flash(f"{item['urun_adi']} için fiyat tanımlı değil!", 'warning')
-
                 sepet_items.append({
                     'sepet_id': item['sepet_id'],
                     'urun_adi': f"{item['urun_adi']} ({renk_adi or 'Standart'}, {cam_tipi_adi or 'Standart'})",
@@ -487,20 +502,46 @@ def sepet():
                     'fiyat': round(fiyat, 2),
                     'toplam': round(toplam, 2)
                 })
-
             return render_template('sepet.html', sepet_items=sepet_items)
     except Exception as e:
         flash(f"Sepet görüntüleme hatası: {str(e)}", 'danger')
+        logger.error(f"Sepet görüntüleme hatası: {str(e)}")
         return render_template('sepet.html', sepet_items=[])
 
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        with get_db_connection() as connection:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT kullanici_id, ad, email, rol, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s",
+                (user_id,)
+            )
+            user_data = cursor.fetchone()
+            if user_data:
+                return User(
+                    id=user_data['kullanici_id'],
+                    ad=user_data['ad'],
+                    email=user_data['email'],
+                    rol=user_data['rol'],
+                    profil_fotografi=user_data['profil_fotografi']
+                )
+            return None
+    except Exception as e:
+        logger.error(f"Kullanıcı yükleme hatası: {str(e)}")
+        return None
 
+# Sepet silme rotası
 @app.route('/sepet_sil/<int:sepet_id>', methods=['GET'])
 @login_required
 def sepet_sil(sepet_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor()
-            cursor.execute("SELECT urun_id, miktar FROM sepet WHERE sepet_id = %s AND kullanici_id = %s", (sepet_id, current_user.id))
+            cursor.execute(
+                "SELECT urun_id, miktar FROM sepet WHERE sepet_id = %s AND kullanici_id = %s",
+                (sepet_id, current_user.id)
+            )
             if cursor.fetchone():
                 cursor.execute("DELETE FROM sepet WHERE sepet_id = %s", (sepet_id,))
                 connection.commit()
@@ -510,9 +551,11 @@ def sepet_sil(sepet_id):
         return redirect(url_for('sepet'))
     except Exception as e:
         flash(f"Sepet silme hatası: {str(e)}", 'danger')
+        logger.error(f"Sepet silme hatası: {str(e)}")
         return redirect(url_for('sepet'))
 
 
+# Sipariş oluşturma rotası
 @app.route('/siparis_olustur')
 @login_required
 def siparis_olustur():
@@ -521,7 +564,8 @@ def siparis_olustur():
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
                 "SELECT sepet_id, urun_id, miktar, satici_id, renk_ozellik_id, cam_tipi_ozellik_id FROM sepet WHERE kullanici_id = %s",
-                (current_user.id,))
+                (current_user.id,)
+            )
             sepet_items = cursor.fetchall()
             if not sepet_items:
                 flash('Sepet boş, sipariş oluşturulmadı.', 'danger')
@@ -530,7 +574,6 @@ def siparis_olustur():
             basarili_urunler = []
             hatali_urunler = []
             for item in sepet_items:
-                # Ürün bilgilerini al
                 cursor.execute("SELECT urun_adi, stok, cari_fiyat FROM urunler WHERE urun_id = %s", (item['urun_id'],))
                 urun = cursor.fetchone()
                 if not urun:
@@ -541,43 +584,40 @@ def siparis_olustur():
                         f"{urun['urun_adi']}: Yeterli stok yok (Mevcut: {urun['stok']}, İstenen: {item['miktar']})")
                     continue
 
-                # Toplam fiyat hesaplama
                 toplam_fiyat = float(urun['cari_fiyat'] or 0.0) * item['miktar']
-
-                # Renk özelliği fiyatını ekle
+                renk_adi = None
+                cam_tipi_adi = None
                 if item['renk_ozellik_id']:
                     cursor.execute(
-                        "SELECT fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
-                        (item['renk_ozellik_id'],))
-                    renk_fiyat = cursor.fetchone()
-                    if renk_fiyat and renk_fiyat['fiyat_ekleme']:
-                        toplam_fiyat += float(renk_fiyat['fiyat_ekleme']) * item['miktar']
-
-                # Cam tipi özelliği fiyatını ekle
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
+                        (item['renk_ozellik_id'],)
+                    )
+                    renk = cursor.fetchone()
+                    if renk and renk['fiyat_ekleme']:
+                        toplam_fiyat += float(renk['fiyat_ekleme']) * item['miktar']
+                        renk_adi = renk['deger']
                 if item['cam_tipi_ozellik_id']:
                     cursor.execute(
-                        "SELECT fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
-                        (item['cam_tipi_ozellik_id'],))
-                    cam_fiyat = cursor.fetchone()
-                    if cam_fiyat and cam_fiyat['fiyat_ekleme']:
-                        toplam_fiyat += float(cam_fiyat['fiyat_ekleme']) * item['miktar']
+                        "SELECT deger, fiyat_ekleme FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
+                        (item['cam_tipi_ozellik_id'],)
+                    )
+                    cam = cursor.fetchone()
+                    if cam and cam['fiyat_ekleme']:
+                        toplam_fiyat += float(cam['fiyat_ekleme']) * item['miktar']
+                        cam_tipi_adi = cam['deger']
 
-                # Siparişi kaydet
                 cursor.execute("START TRANSACTION")
                 cursor.execute("""
-                               INSERT INTO siparisler (kullanici_id, urun_id, miktar, siparis_tarihi, durum, satici_id,
-                                                       renk_ozellik_id, cam_tipi_ozellik_id, toplam_fiyat)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               """, (current_user.id, item['urun_id'], item['miktar'], datetime.now(), 'Bekliyor',
-                                     item['satici_id'],
-                                     item['renk_ozellik_id'] or None, item['cam_tipi_ozellik_id'] or None,
-                                     toplam_fiyat))
+                    INSERT INTO siparisler (kullanici_id, urun_id, miktar, siparis_tarihi, durum, satici_id,
+                                            renk_ozellik_id, cam_tipi_ozellik_id, toplam_fiyat)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (current_user.id, item['urun_id'], item['miktar'], datetime.now(), 'Bekliyor',
+                      item['satici_id'], item['renk_ozellik_id'] or None, item['cam_tipi_ozellik_id'] or None,
+                      toplam_fiyat))
                 siparis_id = cursor.lastrowid
                 cursor.execute("UPDATE urunler SET stok = stok - %s WHERE urun_id = %s",
                                (item['miktar'], item['urun_id']))
                 cursor.execute("DELETE FROM sepet WHERE sepet_id = %s", (item['sepet_id'],))
-
-                # Satıcıya e-posta bildirimi
                 cursor.execute("SELECT email, ad FROM saticilar WHERE satici_id = %s", (item['satici_id'],))
                 satici = cursor.fetchone()
                 connection.commit()
@@ -595,8 +635,22 @@ def siparis_olustur():
                     </ul>
                     <p>Adopen Ekibi</p>
                     """
-                    if not send_email(satici['email'], "Adopen - Yeni Sipariş Bildirimi", email_body):
-                        flash(f"{satici['ad']} için e-posta gönderilemedi.", 'warning')
+                    send_email(satici['email'], "Adopen - Yeni Sipariş Bildirimi", email_body)
+
+                email_body = f"""
+                <h3>Merhaba {current_user.ad},</h3>
+                <p>Yeni bir sipariş oluşturduğunuz için teşekkür ederiz!</p>
+                <ul>
+                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                    <li><strong>Ürün:</strong> {urun['urun_adi']}</li>
+                    <li><strong>Miktar:</strong> {item['miktar']}</li>
+                    <li><strong>Toplam Fiyat:</strong> {toplam_fiyat:.2f} TL</li>
+                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                </ul>
+                <p>Siparişinizle ilgili güncellemeleri takip edebilirsiniz.</p>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(current_user.email, "Adopen - Sipariş Onay Bildirimi", email_body)
 
             if basarili_urunler:
                 flash(f"Sipariş başarıyla oluşturuldu: {', '.join(basarili_urunler)}", 'success')
@@ -606,7 +660,10 @@ def siparis_olustur():
             return redirect(url_for('siparisler') if basarili_urunler else url_for('sepet'))
     except Exception as e:
         flash(f"Sipariş oluşturma hatası: {str(e)}", 'danger')
+        logger.error(f"Sipariş oluşturma hatası: {str(e)}")
         return redirect(url_for('sepet'))
+
+# Siparişler rotası
 @app.route('/siparisler', methods=['GET'])
 @login_required
 def siparisler():
@@ -626,7 +683,7 @@ def siparisler():
                     ORDER BY s.siparis_tarihi DESC
                 """
                 cursor.execute(query, (current_user.id,))
-            else:  # satici veya admin
+            else:
                 cursor.execute("SELECT satici_id FROM saticilar WHERE kullanici_id = %s", (current_user.id,))
                 satici = cursor.fetchone()
                 if not satici:
@@ -646,18 +703,22 @@ def siparisler():
 
             siparisler = []
             for row in cursor.fetchall():
-                # Özellik isimlerini al (renk ve cam tipi)
                 renk_adi = None
                 cam_tipi_adi = None
                 if row['renk_ozellik_id']:
-                    cursor.execute("SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'", (row['renk_ozellik_id'],))
+                    cursor.execute(
+                        "SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'renk'",
+                        (row['renk_ozellik_id'],)
+                    )
                     renk = cursor.fetchone()
                     renk_adi = renk['deger'] if renk else None
                 if row['cam_tipi_ozellik_id']:
-                    cursor.execute("SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'", (row['cam_tipi_ozellik_id'],))
+                    cursor.execute(
+                        "SELECT deger FROM urun_ozellikleri WHERE ozellik_id = %s AND ozellik_tipi = 'cam_tipi'",
+                        (row['cam_tipi_ozellik_id'],)
+                    )
                     cam = cursor.fetchone()
                     cam_tipi_adi = cam['deger'] if cam else None
-
                 siparisler.append({
                     'siparis_id': row['siparis_id'],
                     'urun_adi': f"{row['urun_adi']} ({renk_adi or 'Standart'}, {cam_tipi_adi or 'Standart'})",
@@ -692,13 +753,15 @@ def siparisler():
                         'talep_tarihi': row['talep_tarihi'].strftime('%Y-%m-%d %H:%M:%S') if row['talep_tarihi'] else '-'
                     } for row in cursor.fetchall()
                 ]
+        return render_template('siparisler.html', siparisler=siparisler, talepler=talepler)
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
-        print(f"Veritabanı hatası: {str(db_err)}")
+        logger.error(f"Veritabanı hatası: {str(db_err)}")
+        return render_template('siparisler.html', siparisler=[], talepler=[])
     except Exception as e:
         flash(f"Sipariş görüntüleme hatası: {str(e)}", 'danger')
-        print(f"Sipariş görüntüleme hatası: {str(e)}")
-    return render_template('siparisler.html', siparisler=siparisler, talepler=talepler)
+        logger.error(f"Sipariş görüntüleme hatası: {str(e)}")
+        return render_template('siparisler.html', siparisler=[], talepler=[])
 @app.route('/iade_talep/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def iade_talep(siparis_id):
@@ -737,8 +800,20 @@ def iade_talep(siparis_id):
                 )
                 connection.commit()
                 flash('İade talebi başarıyla oluşturuldu!', 'success')
+                email_body = f"""
+                <h3>Merhaba {current_user.ad},</h3>
+                <p>İade talebiniz başarıyla oluşturuldu:</p>
+                <ul>
+                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                    <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                    <li><strong>Neden:</strong> {form.talep_nedeni.data}</li>
+                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                </ul>
+                <p>Talebiniz en kısa sürede incelenecektir.</p>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(current_user.email, "Adopen - İade Talebi Oluşturuldu", email_body)
                 return redirect(url_for('siparisler'))
-
             return render_template('talep.html', form=form, siparis_id=siparis_id, urun_adi=siparis['urun_adi'])
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
@@ -748,7 +823,7 @@ def iade_talep(siparis_id):
         flash(f"İade talebi hatası: {str(e)}", 'danger')
         logger.error(f"İade talebi hatası: {str(e)}")
         return redirect(url_for('siparisler'))
-
+# İptal talebi rotası
 @app.route('/iptal_talep/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def iptal_talep(siparis_id):
@@ -769,7 +844,7 @@ def iptal_talep(siparis_id):
                 (siparis_id, current_user.id)
             )
             siparis = cursor.fetchone()
-            if not siparis or siparis['durum'] not in ['Bekliyor', 'Hazırlanıyor']:
+            if not siparis or siparis['durum'] not in ['Bekliyor', 'Onaylandı']:
                 flash('Bu sipariş için iptal talebi oluşturamazsınız!', 'danger')
                 return redirect(url_for('siparisler'))
 
@@ -787,8 +862,20 @@ def iptal_talep(siparis_id):
                 )
                 connection.commit()
                 flash('İptal talebi başarıyla oluşturuldu!', 'success')
+                email_body = f"""
+                <h3>Merhaba {current_user.ad},</h3>
+                <p>İptal talebiniz başarıyla oluşturuldu:</p>
+                <ul>
+                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                    <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                    <li><strong>Neden:</strong> {form.talep_nedeni.data}</li>
+                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                </ul>
+                <p>Talebiniz en kısa sürede incelenecektir.</p>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(current_user.email, "Adopen - İptal Talebi Oluşturuldu", email_body)
                 return redirect(url_for('siparisler'))
-
             return render_template('talep.html', form=form, siparis_id=siparis_id, urun_adi=siparis['urun_adi'])
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
@@ -798,178 +885,83 @@ def iptal_talep(siparis_id):
         flash(f"İptal talebi hatası: {str(e)}", 'danger')
         logger.error(f"İptal talebi hatası: {str(e)}")
         return redirect(url_for('siparisler'))
-@app.route('/odeme/<int:siparis_id>', methods=['GET', 'POST'])
+# Ödeme rotası
+@app.route('/odeme/<int:siparis_id>', methods=['POST'])
 @login_required
 def odeme(siparis_id):
     if current_user.rol != 'alici':
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
-        return redirect(url_for('index'))
-
-    form = OdemeForm()
+        return redirect(url_for('siparisler'))
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT s.siparis_id, s.toplam_fiyat, s.durum, u.urun_adi, s.miktar, 
-                       ro.deger AS renk_adi, co.deger AS cam_tipi_adi
+            cursor.execute(
+                """
+                SELECT s.siparis_id, s.kullanici_id, s.toplam_fiyat, s.durum, u.urun_adi, s.satici_id
                 FROM siparisler s
                 JOIN urunler u ON s.urun_id = u.urun_id
-                LEFT JOIN urun_ozellikleri ro ON s.renk_ozellik_id = ro.ozellik_id AND ro.ozellik_tipi = 'renk'
-                LEFT JOIN urun_ozellikleri co ON s.cam_tipi_ozellik_id = co.ozellik_id AND co.ozellik_tipi = 'cam_tipi'
                 WHERE s.siparis_id = %s AND s.kullanici_id = %s
-            """, (siparis_id, current_user.id))
-            siparis = cursor.fetchone()
-
-            if not siparis:
-                flash('Sipariş bulunamadı veya size ait değil.', 'danger')
-                return redirect(url_for('siparisler'))
-
-            if siparis['durum'] == 'Ödendi':
-                flash('Bu sipariş zaten ödenmiş.', 'warning')
-                return redirect(url_for('siparisler'))
-
-            if not siparis['toplam_fiyat'] or siparis['toplam_fiyat'] == 0:
-                flash(f"{siparis['urun_adi']} siparişi için toplam fiyat sıfır veya tanımlı değil.", 'danger')
-                return redirect(url_for('siparisler'))
-
-            urun_adi = siparis['urun_adi'] or 'Bilinmeyen Ürün'
-            renk_adi = siparis['renk_adi'] or 'Standart'
-            cam_tipi_adi = siparis['cam_tipi_adi'] or 'Standart'
-
-            cursor.execute("""
-                SELECT kart_id, kart_numarasi, kart_sahibi_adi, card_token
-                FROM kartlar
-                WHERE kullanici_id = %s
-            """, (current_user.id,))
-            kartlar = cursor.fetchall()
-            form.kart_id.choices = [(0, "Kart seçin")] + [(k['kart_id'], f"{k['kart_sahibi_adi']} - {k['kart_numarasi']}") for k in kartlar]
-
-            cursor.execute("""
-                SELECT tarih, islem
-                FROM logs
-                WHERE kullanici_id = %s AND islem LIKE '%Ödeme yapıldı%'
-                ORDER BY tarih DESC LIMIT 10
-            """, (current_user.id,))
-            odeme_gecmisi = cursor.fetchall()
-
-            if form.validate_on_submit():
-                kart_id = form.kart_id.data
-                if not kart_id or kart_id == 0:
-                    flash('Lütfen bir kart seçin.', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
-
-                cursor.execute("""
-                    SELECT card_token, kart_numarasi
-                    FROM kartlar
-                    WHERE kart_id = %s AND kullanici_id = %s
-                """, (kart_id, current_user.id))
-                kart = cursor.fetchone()
-                if not kart:
-                    flash('Seçilen kart bulunamadı.', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
-
-                # Ödeme işlemi
-                iyzico_client = iyzipay.Client({
-                    'api_key': IYZICO_API_KEY,
-                    'secret_key': IYZICO_SECRET_KEY,
-                    'base_url': IYZICO_BASE_URL
-                })
-                request = {
-                    'price': str(siparis['toplam_fiyat']),
-                    'paidPrice': str(siparis['toplam_fiyat']),
-                    'currency': 'TRY',
-                    'basketId': str(siparis_id),
-                    'paymentCard': {
-                        'cardToken': kart['card_token'] if kart['card_token'] else None,
-                        'cardNumber': kart['kart_numarasi'].replace(' ', '') if not kart['card_token'] else None,
-                        'expireMonth': None,
-                        'expireYear': None,
-                        'cvc': None,
-                        'cardHolderName': None
-                    },
-                    'buyer': {
-                        'id': str(current_user.id),
-                        'name': current_user.ad,
-                        'surname': '',
-                        'email': current_user.email
-                    },
-                    'billingAddress': {
-                        'contactName': current_user.ad,
-                        'city': 'Istanbul',
-                        'country': 'Turkey',
-                        'address': 'N/A'
-                    },
-                    'basketItems': [{
-                        'id': str(siparis['siparis_id']),
-                        'name': urun_adi,
-                        'category1': 'PVC',
-                        'itemType': 'PHYSICAL',
-                        'price': str(siparis['toplam_fiyat'])
-                    }]
-                }
-                try:
-                    response = iyzico_client.create_payment(request)
-                    if response['status'] != 'success':
-                        flash('Ödeme başarısız: ' + response.get('errorMessage', 'Hata oluştu.'), 'danger')
-                        return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
-
-                    # Ödeme başarılı, siparişi güncelle
-                    cursor.execute("""
-                        UPDATE siparisler
-                        SET durum = 'Ödendi', guncel_durum = 'Ödendi', guncelleme_tarihi = %s
-                        WHERE siparis_id = %s
-                    """, (datetime.now(), siparis_id))
-
-                    islem = f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']:.2f} TL"
-                    cursor.execute("""
-                        INSERT INTO logs (kullanici_id, islem, tarih)
-                        VALUES (%s, %s, %s)
-                    """, (current_user.id, islem, datetime.now()))
-
-                    connection.commit()
-                    flash('Ödeme başarıyla tamamlandı!', 'success')
-                    return redirect(url_for('siparisler'))
-
-                except Exception as e:
-                    if kart['card_token'] is None:  # Sahte kart (test modu)
-                        cursor.execute("""
-                            UPDATE siparisler
-                            SET durum = 'Ödendi', guncel_durum = 'Ödendi', guncelleme_tarihi = %s
-                            WHERE siparis_id = %s
-                        """, (datetime.now(), siparis_id))
-                        islem = f"Test ödemesi yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']:.2f} TL"
-                        cursor.execute("""
-                            INSERT INTO logs (kullanici_id, islem, tarih)
-                            VALUES (%s, %s, %s)
-                        """, (current_user.id, islem, datetime.now()))
-                        connection.commit()
-                        flash('Test ödemesi başarıyla tamamlandı!', 'success')
-                        return redirect(url_for('siparisler'))
-                    flash(f'Ödeme hatası: {str(e)}', 'danger')
-                    return render_template('odeme.html', form=form, odeme_gecmisi=odeme_gecmisi, urun_adi=urun_adi, renk_adi=renk_adi, cam_tipi_adi=cam_tipi_adi)
-
-            form.siparis_id.data = siparis['siparis_id']
-            form.tutar.data = float(siparis['toplam_fiyat'])
-            return render_template(
-                'odeme.html',
-                form=form,
-                odeme_gecmisi=odeme_gecmisi,
-                urun_adi=urun_adi,
-                renk_adi=renk_adi,
-                cam_tipi_adi=cam_tipi_adi
+                """,
+                (siparis_id, current_user.id)
             )
+            siparis = cursor.fetchone()
+            if not siparis or siparis['durum'] != 'Onaylandı':
+                flash('Bu sipariş için ödeme yapılamaz!', 'danger')
+                return redirect(url_for('siparisler'))
 
+            card_token = request.form.get('card_token')
+            if not card_token:
+                # Iyzico test modu: card_token yoksa ödeme başarılı sayılır
+                cursor.execute(
+                    "UPDATE siparisler SET durum = %s WHERE siparis_id = %s",
+                    ('Ödeme Yapıldı', siparis_id)
+                )
+                cursor.execute(
+                    "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                    (current_user.id, f"Ödeme yapıldı: Sipariş ID {siparis_id}, Tutar {siparis['toplam_fiyat']:.2f} TL", datetime.now())
+                )
+                connection.commit()
+                flash('Ödeme başarılı!', 'success')
+                email_body = f"""
+                <h3>Merhaba {current_user.ad},</h3>
+                <p>Ödemeniz başarıyla tamamlandı:</p>
+                <ul>
+                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                    <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                    <li><strong>Tutar:</strong> {siparis['toplam_fiyat']:.2f} TL</li>
+                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                </ul>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(current_user.email, "Adopen - Ödeme Onaylandı", email_body)
+                if siparis['satici_id']:
+                    cursor.execute("SELECT ad, email FROM saticilar WHERE satici_id = %s", (siparis['satici_id'],))
+                    satici = cursor.fetchone()
+                    if satici:
+                        satici_email_body = f"""
+                        <h3>Merhaba {satici['ad']},</h3>
+                        <p>Bir sipariş için ödeme alındı:</p>
+                        <ul>
+                            <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                            <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                            <li><strong>Tutar:</strong> {siparis['toplam_fiyat']:.2f} TL</li>
+                            <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                        </ul>
+                        <p>Adopen Ekibi</p>
+                        """
+                        send_email(satici['email'], "Adopen - Ödeme Bildirimi", satici_email_body)
+                return redirect(url_for('siparisler'))
+            else:
+                flash('Ödeme işlemi test modunda, lütfen geçerli bir kart tokeni kullanmayın.', 'warning')
+                return redirect(url_for('siparisler'))
+    except mysql.connector.Error as db_err:
+        flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+        logger.error(f"Veritabanı hatası: {str(db_err)}")
+        return redirect(url_for('siparisler'))
     except Exception as e:
-        flash(f'Hata: {str(e)}', 'danger')
-        return render_template(
-            'odeme.html',
-            form=form,
-            odeme_gecmisi=[],
-            urun_adi='Bilinmeyen Ürün',
-            renk_adi='Standart',
-            cam_tipi_adi='Standart'
-        )
-
+        flash(f"Ödeme hatası: {str(e)}", 'danger')
+        logger.error(f"Ödeme hatası: {str(e)}")
+        return redirect(url_for('siparisler'))
 def is_valid_luhn(card_number):
     """Luhn algoritması ile kart numarasını doğrula."""
     digits = [int(d) for d in card_number]
@@ -1206,104 +1198,170 @@ def urun_duzenle(urun_id):
         flash(f"Ürün düzenleme hatası: {str(e)}", 'danger')
         return redirect(url_for('urunler'))
 
+# Puanlama rotası
 @app.route('/puanla/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
 def puanla(siparis_id):
     if current_user.rol != 'alici':
         flash('Bu sayfaya yalnızca alıcılar erişebilir.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('siparisler'))
+    form = PuanForm()
     try:
         with get_db_connection() as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT satici_id, kullanici_id, durum FROM siparisler WHERE siparis_id = %s AND kullanici_id = %s",
-                          (siparis_id, current_user.id))
+            cursor = connection.cursor(dictionary=True, buffered=True)
+            cursor.execute(
+                """
+                SELECT s.siparis_id, s.kullanici_id, s.durum, u.urun_adi, s.satici_id
+                FROM siparisler s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                WHERE s.siparis_id = %s AND s.kullanici_id = %s
+                """,
+                (siparis_id, current_user.id)
+            )
             siparis = cursor.fetchone()
-            if not siparis or siparis['durum'] != 'Onaylandı':
-                flash('Bu sipariş puanlanamaz!', 'danger')
+            if not siparis or siparis['durum'] != 'Teslim Edildi':
+                flash('Bu sipariş için puanlama yapılamaz!', 'danger')
                 return redirect(url_for('siparisler'))
 
-            # Satıcı ID'sinin kullanicilar tablosunda var olduğunu kontrol et
-            cursor.execute("SELECT kullanici_id, ad, email FROM kullanicilar WHERE kullanici_id = %s AND rol = 'satici'",
-                          (siparis['satici_id'],))
-            satici = cursor.fetchone()
-            if not satici:
-                flash('Satıcı bulunamadı! Puanlama yapılamaz.', 'danger')
-                return redirect(url_for('siparisler'))
-
-            if request.method == 'POST':
-                puan = request.form.get('puan')
-                if not puan or int(puan) not in range(1, 6):
-                    flash('Lütfen 1-5 arasında bir puan girin!', 'danger')
-                else:
-                    cursor.execute("INSERT INTO puanlamalar (siparis_id, kullanici_id, satici_id, puan, tarih) VALUES (%s, %s, %s, %s, %s)",
-                                  (siparis_id, current_user.id, siparis['satici_id'], int(puan), datetime.now()))
-                    connection.commit()
-                    # Satıcıya puanlama bildirimi
-                    email_body = f"""
-                    <h3>Merhaba {satici['ad']},</h3>
-                    <p>Sipariş ID {siparis_id} için yeni bir puanlama yapıldı:</p>
-                    <ul>
-                        <li><strong>Puan:</strong> {puan}/5</li>
-                        <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
-                    </ul>
-                    <p>Adopen Ekibi</p>
+            if form.validate_on_submit():
+                cursor.execute(
                     """
-                    if send_email(satici['email'], "Adopen - Puanlama Bildirimi", email_body):
-                        logger.debug(f"Satıcıya puanlama bildirimi gönderildi: {satici['email']}")
-                    else:
-                        logger.warning(f"Satıcıya puanlama bildirimi gönderilemedi: {satici['email']}")
-                    flash('Puanlama başarıyla eklendi!', 'success')
-                    return redirect(url_for('siparisler'))
-            return render_template('puanla.html', siparis_id=siparis_id)
+                    INSERT INTO puanlamalar (siparis_id, kullanici_id, satici_id, puan, yorum, tarih)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        siparis_id,
+                        current_user.id,
+                        siparis['satici_id'],
+                        form.puan.data,
+                        form.yorum.data,
+                        datetime.now()
+                    )
+                )
+                cursor.execute(
+                    "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                    (current_user.id, f"Puanlama yapıldı: Sipariş ID {siparis_id}, Puan: {form.puan.data}", datetime.now())
+                )
+                connection.commit()
+                flash('Puanlama başarıyla kaydedildi!', 'success')
+                email_body = f"""
+                <h3>Merhaba {current_user.ad},</h3>
+                <p>Siparişiniz için puanlamanız alındı:</p>
+                <ul>
+                    <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                    <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                    <li><strong>Puan:</strong> {form.puan.data}</li>
+                    <li><strong>Yorum:</strong> {form.yorum.data or 'Yorum yapılmadı'}</li>
+                    <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                </ul>
+                <p>Adopen Ekibi</p>
+                """
+                send_email(current_user.email, "Adopen - Puanlama Bildirimi", email_body)
+                if siparis['satici_id']:
+                    cursor.execute("SELECT ad, email FROM saticilar WHERE satici_id = %s", (siparis['satici_id'],))
+                    satici = cursor.fetchone()
+                    if satici:
+                        satici_email_body = f"""
+                        <h3>Merhaba {satici['ad']},</h3>
+                        <p>Bir siparişiniz için yeni bir puanlama alındı:</p>
+                        <ul>
+                            <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                            <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                            <li><strong>Puan:</strong> {form.puan.data}</li>
+                            <li><strong>Yorum:</strong> {form.yorum.data or 'Yorum yapılmadı'}</li>
+                            <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+                        </ul>
+                        <p>Adopen Ekibi</p>
+                        """
+                        send_email(satici['email'], "Adopen - Yeni Puanlama Bildirimi", satici_email_body)
+                return redirect(url_for('siparisler'))
+            return render_template('puanla.html', form=form, siparis_id=siparis_id, urun_adi=siparis['urun_adi'])
+    except mysql.connector.Error as db_err:
+        flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+        logger.error(f"Veritabanı hatası: {str(db_err)}")
+        return redirect(url_for('siparisler'))
     except Exception as e:
         flash(f"Puanlama hatası: {str(e)}", 'danger')
         logger.error(f"Puanlama hatası: {str(e)}")
         return redirect(url_for('siparisler'))
 
-@app.route('/talep_onayla/<int:talep_id>', methods=['POST'])
+@app.route('/talep_onayla/<int:talep_id>', methods=['GET'])
 @login_required
 def talep_onayla(talep_id):
     if current_user.rol not in ['satici', 'admin']:
-        flash('Bu işlemi yalnızca satıcılar veya adminler yapabilir.', 'danger')
+        flash('Bu sayfaya yalnızca satıcılar ve adminler erişebilir.', 'danger')
         return redirect(url_for('siparisler'))
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True, buffered=True)
             cursor.execute(
                 """
-                SELECT t.id, t.siparis_id, t.talep_tipi, s.satici_id
+                SELECT t.id, t.siparis_id, t.talep_tipi, t.talep_nedeni, s.kullanici_id, s.urun_id, s.miktar,
+                       s.toplam_fiyat, u.urun_adi, k.email AS alici_email, k.ad AS alici_ad
                 FROM siparis_talepleri t
                 JOIN siparisler s ON t.siparis_id = s.siparis_id
-                JOIN saticilar st ON s.satici_id = st.satici_id
-                WHERE t.id = %s AND st.kullanici_id = %s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                JOIN kullanicilar k ON s.kullanici_id = k.kullanici_id
+                WHERE t.id = %s AND t.talep_durumu = 'Bekliyor'
                 """,
-                (talep_id, current_user.id)
+                (talep_id,)
             )
             talep = cursor.fetchone()
             if not talep:
-                flash('Talep bulunamadı veya bu talebi işleme yetkiniz yok.', 'danger')
+                flash('Talep bulunamadı veya zaten işleme alındı.', 'danger')
                 return redirect(url_for('siparisler'))
 
+            cursor.execute("SELECT satici_id FROM saticilar WHERE kullanici_id = %s", (current_user.id,))
+            satici = cursor.fetchone()
+            if not satici or satici['satici_id'] != talep['satici_id']:
+                flash('Bu talebi onaylama yetkiniz yok.', 'danger')
+                return redirect(url_for('siparisler'))
+
+            cursor.execute("START TRANSACTION")
             cursor.execute(
-                "UPDATE siparis_talepleri SET talep_durumu = 'Onaylandı', talep_tarihi = %s WHERE id = %s",
-                (datetime.now(), talep_id)
+                "UPDATE siparis_talepleri SET talep_durumu = %s WHERE id = %s",
+                ('Onaylandı', talep_id)
             )
             if talep['talep_tipi'] == 'İade':
                 cursor.execute(
-                    "UPDATE siparisler SET durum = 'İade Onaylandı' WHERE siparis_id = %s",
-                    (talep['siparis_id'],)
+                    "UPDATE siparisler SET durum = %s, iade_nedeni = %s WHERE siparis_id = %s",
+                    ('İade Edildi', talep['talep_nedeni'], talep['siparis_id'])
+                )
+                cursor.execute(
+                    "UPDATE kullanicilar SET bakiye = bakiye + %s WHERE kullanici_id = %s",
+                    (talep['toplam_fiyat'], talep['kullanici_id'])
+                )
+                cursor.execute(
+                    "UPDATE urunler SET stok = stok + %s WHERE urun_id = %s",
+                    (talep['miktar'], talep['urun_id'])
                 )
             elif talep['talep_tipi'] == 'İptal':
                 cursor.execute(
-                    "UPDATE siparisler SET durum = 'İptal Edildi' WHERE siparis_id = %s",
-                    (talep['siparis_id'],)
+                    "UPDATE siparisler SET durum = %s WHERE siparis_id = %s",
+                    ('İptal Edildi', talep['siparis_id'])
+                )
+                cursor.execute(
+                    "UPDATE urunler SET stok = stok + %s WHERE urun_id = %s",
+                    (talep['miktar'], talep['urun_id'])
                 )
             cursor.execute(
                 "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                (current_user.id, f"Talep onaylandı: Talep ID {talep_id}, Tip: {talep['talep_tipi']}", datetime.now())
+                (current_user.id, f"{talep['talep_tipi']} talebi onaylandı: Sipariş ID {talep['siparis_id']}", datetime.now())
             )
             connection.commit()
-            flash('Talep başarıyla onaylandı!', 'success')
+            flash(f"{talep['talep_tipi']} talebi onaylandı!", 'success')
+            email_body = f"""
+            <h3>Merhaba {talep['alici_ad']},</h3>
+            <p>{talep['talep_tipi']} talebiniz onaylandı:</p>
+            <ul>
+                <li><strong>Sipariş ID:</strong> {talep['siparis_id']}</li>
+                <li><strong>Ürün:</strong> {talep['urun_adi']}</li>
+                <li><strong>Neden:</strong> {talep['talep_nedeni']}</li>
+                <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+            </ul>
+            <p>Adopen Ekibi</p>
+            """
+            send_email(talep['alici_email'], f"Adopen - {talep['talep_tipi']} Talebi Onaylandı", email_body)
             return redirect(url_for('siparisler'))
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
@@ -1314,40 +1372,62 @@ def talep_onayla(talep_id):
         logger.error(f"Talep onaylama hatası: {str(e)}")
         return redirect(url_for('siparisler'))
 
-@app.route('/talep_reddet/<int:talep_id>', methods=['POST'])
+
+# Talep reddetme rotası
+@app.route('/talep_reddet/<int:talep_id>', methods=['GET'])
 @login_required
 def talep_reddet(talep_id):
     if current_user.rol not in ['satici', 'admin']:
-        flash('Bu işlemi yalnızca satıcılar veya adminler yapabilir.', 'danger')
+        flash('Bu sayfaya yalnızca satıcılar ve adminler erişebilir.', 'danger')
         return redirect(url_for('siparisler'))
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True, buffered=True)
             cursor.execute(
                 """
-                SELECT t.id, t.siparis_id, t.talep_tipi, s.satici_id
+                SELECT t.id, t.siparis_id, t.talep_tipi, t.talep_nedeni, s.kullanici_id, s.urun_id,
+                       u.urun_adi, k.email AS alici_email, k.ad AS alici_ad
                 FROM siparis_talepleri t
                 JOIN siparisler s ON t.siparis_id = s.siparis_id
-                JOIN saticilar st ON s.satici_id = st.satici_id
-                WHERE t.id = %s AND st.kullanici_id = %s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                JOIN kullanicilar k ON s.kullanici_id = k.kullanici_id
+                WHERE t.id = %s AND t.talep_durumu = 'Bekliyor'
                 """,
-                (talep_id, current_user.id)
+                (talep_id,)
             )
             talep = cursor.fetchone()
             if not talep:
-                flash('Talep bulunamadı veya bu talebi işleme yetkiniz yok.', 'danger')
+                flash('Talep bulunamadı veya zaten işleme alındı.', 'danger')
+                return redirect(url_for('siparisler'))
+
+            cursor.execute("SELECT satici_id FROM saticilar WHERE kullanici_id = %s", (current_user.id,))
+            satici = cursor.fetchone()
+            if not satici or satici['satici_id'] != talep['satici_id']:
+                flash('Bu talebi reddetme yetkiniz yok.', 'danger')
                 return redirect(url_for('siparisler'))
 
             cursor.execute(
-                "UPDATE siparis_talepleri SET talep_durumu = 'Reddedildi', talep_tarihi = %s WHERE id = %s",
-                (datetime.now(), talep_id)
+                "UPDATE siparis_talepleri SET talep_durumu = %s WHERE id = %s",
+                ('Reddedildi', talep_id)
             )
             cursor.execute(
                 "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                (current_user.id, f"Talep reddedildi: Talep ID {talep_id}, Tip: {talep['talep_tipi']}", datetime.now())
+                (current_user.id, f"{talep['talep_tipi']} talebi reddedildi: Sipariş ID {talep['siparis_id']}", datetime.now())
             )
             connection.commit()
-            flash('Talep başarıyla reddedildi!', 'success')
+            flash(f"{talep['talep_tipi']} talebi reddedildi!", 'success')
+            email_body = f"""
+            <h3>Merhaba {talep['alici_ad']},</h3>
+            <p>{talep['talep_tipi']} talebiniz reddedildi:</p>
+            <ul>
+                <li><strong>Sipariş ID:</strong> {talep['siparis_id']}</li>
+                <li><strong>Ürün:</strong> {talep['urun_adi']}</li>
+                <li><strong>Neden:</strong> {talep['talep_nedeni']}</li>
+                <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+            </ul>
+            <p>Adopen Ekibi</p>
+            """
+            send_email(talep['alici_email'], f"Adopen - {talep['talep_tipi']} Talebi Reddedildi", email_body)
             return redirect(url_for('siparisler'))
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
@@ -1357,8 +1437,6 @@ def talep_reddet(talep_id):
         flash(f"Talep reddetme hatası: {str(e)}", 'danger')
         logger.error(f"Talep reddetme hatası: {str(e)}")
         return redirect(url_for('siparisler'))
-
-
 @app.route('/satici_analiz', methods=['GET', 'POST'])
 @login_required
 def satici_analiz():
@@ -1628,61 +1706,72 @@ def kullanici_sil(kullanici_id):
     except Exception as e:
         flash(f"Kullanıcı silme hatası: {str(e)}", 'danger')
         return redirect(url_for('admin_kullanicilar'))
-
-@app.route('/durum_guncelle/<int:siparis_id>', methods=['GET', 'POST'])
+# Sipariş durumu güncelleme rotası
+@app.route('/durum_guncelle/<int:siparis_id>', methods=['POST'])
 @login_required
 def durum_guncelle(siparis_id):
     if current_user.rol not in ['satici', 'admin']:
         flash('Bu sayfaya yalnızca satıcılar ve adminler erişebilir.', 'danger')
-        return redirect(url_for('index'))
-
-    form = DurumGuncelleForm()
+        return redirect(url_for('siparisler'))
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True, buffered=True)
             cursor.execute(
-                "SELECT durum, satici_id, urun_id FROM siparisler WHERE siparis_id = %s",
+                """
+                SELECT s.siparis_id, s.kullanici_id, s.durum, u.urun_adi, k.email AS alici_email, k.ad AS alici_ad
+                FROM siparisler s
+                JOIN urunler u ON s.urun_id = u.urun_id
+                JOIN kullanicilar k ON s.kullanici_id = k.kullanici_id
+                WHERE s.siparis_id = %s
+                """,
                 (siparis_id,)
             )
             siparis = cursor.fetchone()
             if not siparis:
-                flash('Sipariş bulunamadı!', 'danger')
-                return redirect(url_for('siparisler'))
-            cursor.execute("SELECT satici_id FROM saticilar WHERE satici_id = %s", (siparis['satici_id'],))
-            if not cursor.fetchone():
-                flash('Geçersiz satıcı ID! Lütfen sistem yöneticisiyle iletişime geçin.', 'danger')
-                return redirect(url_for('siparisler'))
-            if current_user.rol == 'satici' and siparis['satici_id'] != current_user.id:
-                flash('Bu siparişi güncelleme yetkiniz yok!', 'danger')
-                return redirect(url_for('siparisler'))
-            cursor.execute("SELECT urun_adi FROM urunler WHERE urun_id = %s", (siparis['urun_id'],))
-            urun = cursor.fetchone()
-            urun_adi = urun['urun_adi'] if urun else 'Bilinmiyor'
-
-            if form.validate_on_submit():
-                yeni_durum = form.durum.data
-                cursor.execute(
-                    "UPDATE siparisler SET durum = %s, guncel_durum = %s, guncelleme_tarihi = %s WHERE siparis_id = %s",
-                    (yeni_durum, yeni_durum, datetime.now(), siparis_id)
-                )
-                cursor.execute(
-                    "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
-                    (current_user.id,
-                     f"Sipariş durumu güncellendi: Sipariş ID {siparis_id}, Yeni Durum: {yeni_durum}, Ürün: {urun_adi}",
-                     datetime.now())
-                )
-                connection.commit()
-                flash(f'Sipariş durumu "{yeni_durum}" olarak güncellendi.', 'success')
+                flash('Sipariş bulunamadı.', 'danger')
                 return redirect(url_for('siparisler'))
 
-            return render_template('durum_guncelle.html', form=form, siparis_id=siparis_id, urun_adi=urun_adi,
-                                   mevcut_durum=siparis['durum'])
+            cursor.execute("SELECT satici_id FROM saticilar WHERE kullanici_id = %s", (current_user.id,))
+            satici = cursor.fetchone()
+            if not satici or satici['satici_id'] != siparis['satici_id']:
+                flash('Bu siparişin durumunu güncelleme yetkiniz yok.', 'danger')
+                return redirect(url_for('siparisler'))
 
+            yeni_durum = request.form.get('yeni_durum')
+            if yeni_durum not in ['Bekliyor', 'Onaylandı', 'Kargoda', 'Teslim Edildi']:
+                flash('Geçersiz durum seçimi.', 'danger')
+                return redirect(url_for('siparisler'))
+
+            cursor.execute(
+                "UPDATE siparisler SET durum = %s WHERE siparis_id = %s",
+                (yeni_durum, siparis_id)
+            )
+            cursor.execute(
+                "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                (current_user.id, f"Sipariş durumu güncellendi: Sipariş ID {siparis_id}, Yeni Durum: {yeni_durum}", datetime.now())
+            )
+            connection.commit()
+            flash(f"Sipariş durumu '{yeni_durum}' olarak güncellendi!", 'success')
+            email_body = f"""
+            <h3>Merhaba {siparis['alici_ad']},</h3>
+            <p>Siparişinizin durumu güncellendi:</p>
+            <ul>
+                <li><strong>Sipariş ID:</strong> {siparis_id}</li>
+                <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
+                <li><strong>Yeni Durum:</strong> {yeni_durum}</li>
+                <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
+            </ul>
+            <p>Adopen Ekibi</p>
+            """
+            send_email(siparis['alici_email'], "Adopen - Sipariş Durumu Güncellendi", email_body)
+            return redirect(url_for('siparisler'))
     except mysql.connector.Error as db_err:
         flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+        logger.error(f"Veritabanı hatası: {str(db_err)}")
         return redirect(url_for('siparisler'))
     except Exception as e:
         flash(f"Durum güncelleme hatası: {str(e)}", 'danger')
+        logger.error(f"Durum güncelleme hatası: {str(e)}")
         return redirect(url_for('siparisler'))
 @app.route('/kart_ekle/<int:siparis_id>', methods=['GET', 'POST'])
 @login_required
