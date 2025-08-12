@@ -4,11 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kayıt Ol</title>
+    <title>Kayıt Ol - Adopen</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/adopen-style.css') }}">
-</head>
-<style>
+    <style>
         body {
             background: #71d7ea;
             min-height: 100vh;
@@ -17,7 +16,6 @@
             position: relative;
             overflow: hidden;
         }
-
         .wave {
             position: absolute;
             bottom: 0;
@@ -27,16 +25,10 @@
             background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 100'%3E%3Cpath d='M0 50 Q 200 0 400 50 T 800 50 V100 H0 Z' fill='%23f1ea73'/%3E%3C/svg%3E");
             animation: waveAnimation 4s linear infinite;
         }
-
         @keyframes waveAnimation {
-            0% {
-                background-position: 0 0;
-            }
-            100% {
-                background-position: 800px 0;
-            }
+            0% { background-position: 0 0; }
+            100% { background-position: 800px 0; }
         }
-
         .login-container {
             max-width: 400px;
             padding: 80px;
@@ -46,60 +38,64 @@
             position: relative;
             z-index: 1;
         }
-
         .btn-adopen {
             background-color: #8a949e;
             color: white;
             border: 1px solid #645869;
             transition: background-color 0.3s;
         }
-
         .btn-adopen:hover {
             background-color: #e3d704;
             border-color: #efeaea;
         }
-
         .alert-adopen {
             border-right: 4px solid #ffffff;
             background-color: #e0e7ff;
             color: #333;
         }
-
     </style>
+</head>
 <body>
 <div class="wave"></div>
-    <div class="container mt-5">
-        <h1>Kayıt Ol</h1>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <form method="POST">
-            <div class="mb-3">
-                <label for="email" class="form-label">E-posta</label>
-                <input type="email" class="form-control" id="email" name="email" required>
-            </div>
-            <div class="mb-3">
-                <label for="sifre" class="form-label">Şifre</label>
-                <input type="password" class="form-control" id="sifre" name="sifre" required>
-            </div>
-            <div class="mb-3">
-                <label for="ad" class="form-label">Ad</label>
-                <input type="text" class="form-control" id="ad" name="ad" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Kayıt Ol</button>
-        </form>
-
-        <a href="{{ url_for('login') }}" class="btn btn-secondary mt-3">Giriş Yap</a>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<div class="container login-container">
+    <h1>Kayıt Ol</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-adopen alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    <form method="POST" action="{{ url_for('register') }}">
+        {{ form.hidden_tag() }}
+        <div class="mb-3">
+            {{ form.ad.label(class="form-label") }}
+            {{ form.ad(class="form-control") }}
+            {% for error in form.ad.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+        <div class="mb-3">
+            {{ form.email.label(class="form-label") }}
+            {{ form.email(class="form-control") }}
+            {% for error in form.email.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+        <div class="mb-3">
+            {{ form.sifre.label(class="form-label") }}
+            {{ form.sifre(class="form-control") }}
+            {% for error in form.sifre.errors %}
+                <span class="text-danger">{{ error }}</span>
+            {% endfor %}
+        </div>
+        {{ form.submit(class="btn btn-adopen") }}
+    </form>
+    <a href="{{ url_for('login') }}" class="btn btn-secondary mt-3">Giriş Yap</a>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

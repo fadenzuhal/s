@@ -15,6 +15,7 @@ from models.KartEkleForm import KartEkleForm
 from models.LoginForm import LoginForm
 from models.ProfilGuncelleForm import ProfilGuncelleForm
 from models.PuanForm import PuanForm
+from models.RegisterForm import RegisterForm
 from models.SepetEkleForm import SepetEkleForm
 from models.UrunForm import UrunForm
 from models.User import User
@@ -61,8 +62,12 @@ def send_email(to, subject, body):
         logger.error(f"E-posta gönderme hatası: {to}, Hata: {str(e)}")
         return False
 
+
+# Rastgele doğrulama kodu oluşturma
 def generate_verification_code(length=6):
     return ''.join(random.choices(string.digits, k=length))
+
+
 # Kullanıcı yükleme fonksiyonu
 @login_manager.user_loader
 def load_user(user_id):
@@ -70,7 +75,7 @@ def load_user(user_id):
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
-                "SELECT kullanici_id, ad, email, rol, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s",
+                "SELECT kullanici_id, ad, email, rol, profil_fotografi, dogrulandi FROM kullanicilar WHERE kullanici_id = %s",
                 (user_id,)
             )
             user_data = cursor.fetchone()
@@ -80,7 +85,8 @@ def load_user(user_id):
                     ad=user_data['ad'],
                     email=user_data['email'],
                     rol=user_data['rol'],
-                    profil_fotografi=user_data['profil_fotografi']
+                    profil_fotografi=user_data['profil_fotografi'],
+                    dogrulandi=user_data['dogrulandi']
                 )
             return None
     except Exception as e:
@@ -88,110 +94,205 @@ def load_user(user_id):
         return None
 
 
-# Giriş rotası
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    # Eğer kullanıcı zaten giriş yapmışsa, ana sayfaya yönlendir
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    login_form = LoginForm()
-    contact_form = ContactForm()
-
-    # İletişim formu gönderimi
-    if contact_form.validate_on_submit():
+# Kayıt rotası
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    form = RegisterForm()
+    if form.validate_on_submit():
+        ad = form.ad.data
+        email = form.email.data
+        sifre = form.sifre.data
         try:
             with get_db_connection() as connection:
-                cursor = connection.cursor()
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute("SELECT email FROM kullanicilar WHERE email = %s", (email,))
+                if cursor.fetchone():
+                    flash('Bu e-posta adresi zaten kayıtlı!', 'danger')
+                    return render_template('register.html', form=form)
+
+                # Kullanıcıyı geçici olarak kaydet (rol varsayılan olarak 'alici')
                 cursor.execute(
-                    "INSERT INTO iletisim_mesajlari (ad, email, mesaj, tarih) VALUES (%s, %s, %s, %s)",
-                    (contact_form.ad.data, contact_form.email.data, contact_form.mesaj.data, datetime.now())
+                    """
+                    INSERT INTO kullanicilar (ad, email, sifre, rol, dogrulandi, bakiye)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (ad, email, sifre, 'alici', False, 0.00)
                 )
                 connection.commit()
-                flash('Mesajınız başarıyla gönderildi!', 'success')
+                cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE email = %s", (email,))
+                row = cursor.fetchone()
+                if row:
+                    kullanici_id = row['kullanici_id']
+                else:
+                    flash('Kullanıcı ID alınamadı. Lütfen tekrar deneyin.', 'danger')
+                    return render_template('register.html', form=form)
+
+                # Doğrulama kodu oluştur ve kaydet
+                kod = generate_verification_code()
+                gecerlilik_suresi = datetime.now() + timedelta(minutes=15)
+                cursor.execute(
+                    """
+                    INSERT INTO dogrulama_kodlari (kullanici_id, kod, olusturma_tarihi, gecerlilik_suresi)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (kullanici_id, kod, datetime.now(), gecerlilik_suresi)
+                )
+                connection.commit()
+
+                # Doğrulama e-postası gönder
                 email_body = f"""
-                <h3>Merhaba {contact_form.ad.data},</h3>
-                <p>İletişim formunuz başarıyla gönderildi. Mesajınız:</p>
-                <p>{contact_form.mesaj.data}</p>
-                <p>En kısa sürede size geri dönüş yapacağız.</p>
+                <h3>Merhaba {ad},</h3>
+                <p>Adopen platformuna hoş geldiniz! Hesabınızı doğrulamak için aşağıdaki kodu kullanın:</p>
+                <p><strong>Doğrulama Kodu:</strong> {kod}</p>
+                <p>Bu kod {gecerlilik_suresi.strftime('%Y-%m-%d %H:%M:%S')} tarihine kadar geçerlidir.</p>
+                <p><a href="{url_for('dogrulama', _external=True)}">Doğrulama Sayfası</a></p>
                 <p>Adopen Ekibi</p>
                 """
-                send_email(contact_form.email.data, "Adopen - İletişim Formu Gönderildi", email_body)
+                if send_email(email, "Adopen - Hesap Doğrulama", email_body):
+                    flash('Kayıt başarılı! Lütfen e-postanıza gönderilen doğrulama kodunu girin.', 'success')
+                    return redirect(url_for('dogrulama'))
+                else:
+                    flash('Doğrulama e-postası gönderilemedi. Lütfen tekrar deneyin.', 'danger')
+                    cursor.execute("DELETE FROM kullanicilar WHERE kullanici_id = %s", (kullanici_id,))
+                    connection.commit()
+                    return render_template('register.html', form=form)
+        except mysql.connector.Error as db_err:
+            flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+            logger.error(f"Veritabanı hatası: {str(db_err)}")
+            return render_template('register.html', form=form)
         except Exception as e:
-            flash(f"Mesaj gönderilirken hata: {str(e)}", 'danger')
-            logger.error(f"İletişim formu hatası: {str(e)}")
-        return redirect(url_for('login'))
+            flash(f"Kayıt hatası: {str(e)}", 'danger')
+            logger.error(f"Kayıt hatası: {str(e)}")
+            return render_template('register.html', form=form)
 
-    # Giriş formu gönderimi
+    return render_template('register.html', form=form)
+
+
+# Doğrulama rotası
+@app.route('/dogrulama', methods=['GET', 'POST'])
+def dogrulama():
+    form = DogrulamaForm()
+    if form.validate_on_submit():
+        email = form.email.data
+        kod = form.kod.data
+        try:
+            with get_db_connection() as connection:
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE email = %s AND dogrulandi = %s",
+                               (email, False))
+                user = cursor.fetchone()
+                if not user:
+                    flash('Bu e-posta ile doğrulanmamış bir hesap bulunamadı.', 'danger')
+                    return render_template('dogrula.html', form=form)
+
+                cursor.execute(
+                    """
+                    SELECT kod, gecerlilik_suresi
+                    FROM dogrulama_kodlari
+                    WHERE kullanici_id = %s
+                      AND gecerlilik_suresi > %s
+                    ORDER BY olusturma_tarihi DESC
+                    LIMIT 1
+                    """,
+                    (user['kullanici_id'], datetime.now())
+                )
+                dogrulama = cursor.fetchone()
+                if not dogrulama:
+                    flash('Geçerli bir doğrulama kodu bulunamadı veya kodun süresi doldu.', 'danger')
+                    return render_template('dogrula.html', form=form)
+
+                if dogrulama['kod'] == kod:
+                    cursor.execute(
+                        "UPDATE kullanicilar SET dogrulandi = %s WHERE kullanici_id = %s",
+                        (True, user['kullanici_id'])
+                    )
+                    cursor.execute(
+                        "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                        (user['kullanici_id'], "Hesap doğrulama başarılı", datetime.now())
+                    )
+                    connection.commit()
+                    flash('Hesabınız başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.', 'success')
+                    return redirect(url_for('login'))
+                else:
+                    flash('Geçersiz doğrulama kodu.', 'danger')
+                    return render_template('dogrula.html', form=form)
+        except mysql.connector.Error as db_err:
+            flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+            logger.error(f"Veritabanı hatası: {str(db_err)}")
+            return render_template('dogrula.html', form=form)
+        except Exception as e:
+            flash(f"Doğrulama hatası: {str(e)}", 'danger')
+            logger.error(f"Doğrulama hatası: {str(e)}")
+            return render_template('dogrula.html', form=form)
+
+    return render_template('dogrula.html', form=form)
+
+
+# Giriş rotası (doğrulama kontrolü eklendi)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    login_form = LoginForm()
+    contact_form = ContactForm()
     if login_form.validate_on_submit():
+        email = login_form.email.data
+        sifre = login_form.password.data
         try:
             with get_db_connection() as connection:
                 cursor = connection.cursor(dictionary=True)
                 cursor.execute(
-                    "SELECT kullanici_id, email, sifre, ad, rol FROM kullanicilar WHERE email = %s",
-                    (login_form.email.data,)
+                    "SELECT kullanici_id, ad, email, sifre, rol, profil_fotografi, dogrulandi FROM kullanicilar WHERE email = %s",
+                    (email,)
                 )
-                user = cursor.fetchone()
-                # Parola doğrudan karşılaştırılıyor (hashing yok)
-                if user and user['sifre'] == login_form.password.data:
-                    user_obj = User(user['kullanici_id'], user['email'], user['ad'], user['rol'])
-                    login_user(user_obj)
-                    flash('Giriş başarılı! Hoş geldiniz.', 'success')
+                user_data = cursor.fetchone()
+                if user_data and user_data['sifre'] == sifre:  # Düz metin şifre karşılaştırması
+                    if not user_data['dogrulandi']:
+                        flash('Hesabınız doğrulanmadı. Lütfen e-postanıza gönderilen kodu girin.', 'danger')
+                        return redirect(url_for('dogrulama'))
+                    user = User(
+                        id=user_data['kullanici_id'],
+                        ad=user_data['ad'],
+                        email=user_data['email'],
+                        rol=user_data['rol'],
+                        profil_fotografi=user_data['profil_fotografi'],
+                        dogrulandi=user_data['dogrulandi']
+                    )
+                    login_user(user, remember=login_form.remember.data)
+                    cursor.execute(
+                        "INSERT INTO logs (kullanici_id, islem, tarih) VALUES (%s, %s, %s)",
+                        (user.id, "Giriş yapıldı", datetime.now())
+                    )
+                    connection.commit()
+                    flash('Giriş başarılı!', 'success')
                     email_body = f"""
-                    <h3>Merhaba {user['ad']},</h3>
+                    <h3>Merhaba {user_data['ad']},</h3>
                     <p>Hesabınıza {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} tarihinde giriş yapıldı.</p>
                     <p>Eğer bu işlemi siz gerçekleştirmediyseniz, lütfen hemen bizimle iletişime geçin.</p>
                     <p>Adopen Ekibi</p>
                     """
-                    send_email(user['email'], "Adopen - Başarılı Giriş Bildirimi", email_body)
+                    send_email(user_data['email'], "Adopen - Giriş Bildirimi", email_body)
                     return redirect(url_for('index'))
                 else:
-                    flash('E-posta veya şifre yanlış.', 'danger')
+                    flash('Geçersiz e-posta veya şifre!', 'danger')
+        except mysql.connector.Error as db_err:
+            flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
+            logger.error(f"Veritabanı hatası: {str(db_err)}")
         except Exception as e:
             flash(f"Giriş hatası: {str(e)}", 'danger')
             logger.error(f"Giriş hatası: {str(e)}")
 
+    if contact_form.validate_on_submit():
+        email_body = f"""
+        <h3>Merhaba {contact_form.ad.data},</h3>
+        <p>İletişim formunuz başarıyla gönderildi. Mesajınız:</p>
+        <p>{contact_form.mesaj.data}</p>
+        <p>En kısa sürede size geri dönüş yapacağız.</p>
+        <p>Adopen Ekibi</p>
+        """
+        send_email(contact_form.email.data, "Adopen - İletişim Formu", email_body)
+        flash('İletişim formunuz gönderildi!', 'success')
+        return redirect(url_for('login'))
+
     return render_template('login.html', login_form=login_form, contact_form=contact_form)
-
-
-# Kayıt rotası
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    from flask_login import current_user
-    # Eğer kullanıcı zaten giriş yapmışsa, ana sayfaya yönlendir
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        try:
-            with get_db_connection() as connection:
-                cursor = connection.cursor()
-                email, sifre, ad = request.form.get('email'), request.form.get('sifre'), request.form.get('ad')
-                cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE email = %s", (email,))
-                if cursor.fetchone():
-                    flash('Bu e-posta zaten kayıtlı.', 'danger')
-                    return render_template('register.html')
-                # Parola düz metin olarak kaydediliyor (hashing yok)
-                cursor.execute(
-                    "INSERT INTO kullanicilar (email, sifre, ad, rol, bakiye) VALUES (%s, %s, %s, %s, 0.00)",
-                    (email, sifre, ad, 'alici')
-                )
-                connection.commit()
-                flash('Kayıt başarılı! Lütfen giriş yapın.', 'success')
-                email_body = f"""
-                <h3>Merhaba {ad},</h3>
-                <p>Adopen platformuna hoş geldiniz! Hesabınız başarıyla oluşturuldu.</p>
-                <p>E-posta: {email}</p>
-                <p>Şimdi giriş yaparak alışverişe başlayabilirsiniz.</p>
-                <p>Adopen Ekibi</p>
-                """
-                send_email(email, "Adopen - Hoş Geldiniz!", email_body)
-                return redirect(url_for('login'))
-        except Exception as e:
-            flash(f"Kayıt hatası: {str(e)}", 'danger')
-            logger.error(f"Kayıt hatası: {str(e)}")
-
-    return render_template('register.html')
 
 
 # Çıkış rotası
@@ -199,46 +300,9 @@ def register():
 @login_required
 def logout():
     logout_user()
-    flash('Çıkış yapıldı.', 'success')
+    flash('Çıkış yapıldı!', 'success')
     return redirect(url_for('login'))
-@app.route('/dogrula', methods=['GET', 'POST'])
-def dogrula():
-    form = DogrulamaForm()
-    if form.validate_on_submit():
-        try:
-            with get_db_connection() as connection:
-                cursor = connection.cursor(dictionary=True)
-                kod = form.kod.data
-                simdi = datetime.now()
 
-                # En son geçerli kodu kontrol et (kullanıcı e-postası veya session ile bağla, burada basitçe son kodu varsayalım; gerçekte session veya email ile filtrele)
-                cursor.execute(
-                    "SELECT id, kullanici_id FROM dogrulama_kodlari WHERE kod = %s AND gecerlilik_suresi > %s ORDER BY olusturma_tarihi DESC LIMIT 1",
-                    (kod, simdi)
-                )
-                dogrulama = cursor.fetchone()
-                if not dogrulama:
-                    flash('Geçersiz veya süresi dolmuş kod. Lütfen tekrar deneyin.', 'danger')
-                    return render_template('dogrula.html', form=form)
-
-                # Hesabı doğrula
-                cursor.execute("UPDATE kullanicilar SET dogrulandi = 1 WHERE kullanici_id = %s",
-                               (dogrulama['kullanici_id'],))
-                connection.commit()
-
-                # Kodu sil (kullanıldıktan sonra)
-                cursor.execute("DELETE FROM dogrulama_kodlari WHERE id = %s", (dogrulama['id'],))
-                connection.commit()
-
-                flash('Hesabınız doğrulandı! Şimdi giriş yapabilirsiniz.', 'success')
-                return redirect(url_for('login'))
-        except Exception as e:
-            flash(f"Doğrulama hatası: {str(e)}", 'danger')
-
-    return render_template('dogrula.html', form=form)
-
-@app.route('/')
-# Ana sayfa rotası
 @app.route('/')
 @app.route('/index')
 @login_required
@@ -1318,7 +1382,6 @@ def puanla(siparis_id):
                         current_user.id,
                         siparis['satici_id'],
                         form.puan.data,
-                        form.yorum.data,
                         datetime.now()
                     )
                 )
@@ -1335,7 +1398,6 @@ def puanla(siparis_id):
                     <li><strong>Sipariş ID:</strong> {siparis_id}</li>
                     <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
                     <li><strong>Puan:</strong> {form.puan.data}</li>
-                    <li><strong>Yorum:</strong> {form.yorum.data or 'Yorum yapılmadı'}</li>
                     <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
                 </ul>
                 <p>Adopen Ekibi</p>
@@ -1352,7 +1414,6 @@ def puanla(siparis_id):
                             <li><strong>Sipariş ID:</strong> {siparis_id}</li>
                             <li><strong>Ürün:</strong> {siparis['urun_adi']}</li>
                             <li><strong>Puan:</strong> {form.puan.data}</li>
-                            <li><strong>Yorum:</strong> {form.yorum.data or 'Yorum yapılmadı'}</li>
                             <li><strong>Tarih:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</li>
                         </ul>
                         <p>Adopen Ekibi</p>
@@ -1668,8 +1729,6 @@ def alicilar_analiz():
             # Kullanıcı bakiyesi
             cursor.execute("SELECT bakiye FROM kullanicilar WHERE kullanici_id = %s", (current_user.id,))
             bakiye = float(cursor.fetchone()['bakiye'] or 0.00)
-
-
 
             # Profil güncelleme
             if form.validate_on_submit():
