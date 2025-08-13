@@ -63,16 +63,14 @@ def send_email(to, subject, body):
 # Rastgele doğrulama kodu oluşturma
 def generate_verification_code(length=6):
     return ''.join(random.choices(string.digits, k=length))
-# Kullanıcı yükleme fonksiyonu
 @login_manager.user_loader
 def load_user(user_id):
     try:
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
-                "SELECT kullanici_id, ad, email, rol, profil_fotografi, dogrulandi FROM kullanicilar WHERE kullanici_id = %s",
-                (user_id,)
-            )
+                "SELECT kullanici_id, ad, email, rol, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s",
+                (user_id,) )
             user_data = cursor.fetchone()
             if user_data:
                 return User(
@@ -80,9 +78,7 @@ def load_user(user_id):
                     ad=user_data['ad'],
                     email=user_data['email'],
                     rol=user_data['rol'],
-                    profil_fotografi=user_data['profil_fotografi'],
-                    dogrulandi=user_data['dogrulandi']
-                )
+                    profil_fotografi=user_data['profil_fotografi'])
             return None
     except Exception as e:
         logger.error(f"Kullanıcı yükleme hatası: {str(e)}")
@@ -108,16 +104,12 @@ def register():
                     INSERT INTO kullanicilar (ad, email, sifre, rol, dogrulandi, bakiye)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (ad, email, sifre, 'alici', False, 0.00)
-                )
+                    (ad, email, sifre, 'alici', False, 0.00)  )
                 connection.commit()
                 cursor.execute("SELECT kullanici_id FROM kullanicilar WHERE email = %s", (email,))
                 row = cursor.fetchone()
                 if row:
                     kullanici_id = row['kullanici_id']
-                else:
-                    flash('Kullanıcı ID alınamadı. Lütfen tekrar deneyin.', 'danger')
-                    return render_template('register.html', form=form)
 
                 # Doğrulama kodu oluştur ve kaydet
                 kod = generate_verification_code()
@@ -148,10 +140,6 @@ def register():
                     cursor.execute("DELETE FROM kullanicilar WHERE kullanici_id = %s", (kullanici_id,))
                     connection.commit()
                     return render_template('register.html', form=form)
-        except mysql.connector.Error as db_err:
-            flash(f"Veritabanı hatası: {str(db_err)}", 'danger')
-            logger.error(f"Veritabanı hatası: {str(db_err)}")
-            return render_template('register.html', form=form)
         except Exception as e:
             flash(f"Kayıt hatası: {str(e)}", 'danger')
             logger.error(f"Kayıt hatası: {str(e)}")
@@ -606,26 +594,7 @@ def sepet():
         flash(f"Sepet görüntüleme hatası: {str(e)}", 'danger')
         logger.error(f"Sepet görüntüleme hatası: {str(e)}")
         return render_template('sepet.html', sepet_items=[])
-@login_manager.user_loader
-def load_user(user_id):
-    try:
-        with get_db_connection() as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute(
-                "SELECT kullanici_id, ad, email, rol, profil_fotografi FROM kullanicilar WHERE kullanici_id = %s",
-                (user_id,) )
-            user_data = cursor.fetchone()
-            if user_data:
-                return User(
-                    id=user_data['kullanici_id'],
-                    ad=user_data['ad'],
-                    email=user_data['email'],
-                    rol=user_data['rol'],
-                    profil_fotografi=user_data['profil_fotografi'])
-            return None
-    except Exception as e:
-        logger.error(f"Kullanıcı yükleme hatası: {str(e)}")
-        return None
+
 # Sepet silme rotası
 @app.route('/sepet_sil/<int:sepet_id>', methods=['GET'])
 @login_required
@@ -1683,8 +1652,7 @@ def alicilar_analiz():
             en_cok_siparis_urunler=[],
             bakiye=0.00,
             odeme_gecmisi=[]   )
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
+
 @app.route('/admin_kullanicilar')
 @login_required
 def admin_kullanicilar():
@@ -1827,11 +1795,7 @@ def kart_ekle(siparis_id):
                 'expire_date': son_kullanma_tarihi,
                 'cvc': cvv,
                 'card_holder_name': kart_sahibi_adi }
-            # Test modunda sahte bir token döndür
             card_token = 'test_token_123'  # Gerçek Iyzico API çağrısı için değiştirin
-            # response = requests.post('https://api.iyzico.com/v2/cardstorage/card', json=iyzico_data)
-            # card_token = response.json().get('card_token') if response.status_code == 200 else None
-
             if not card_token:
                 flash('Kart eklenemedi. Lütfen tekrar deneyin.', 'danger')
                 return redirect(url_for('kart_ekle', siparis_id=siparis_id))

@@ -64,9 +64,7 @@
                                 {% for error in form.sifre.errors %}
                                     {{ error }}<br>
                                 {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
+                            </div>{% endif %}</div>
                     <div class="mb-3">
                         <label for="profil_fotografi" class="form-label">Profil Fotoğrafı</label>
                         {{ form.profil_fotografi(class="form-control", **{'aria-describedby': 'profil_fotografi_error'}) }}
