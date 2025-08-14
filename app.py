@@ -1,8 +1,6 @@
-import random
-import re
+import random,re
 import string
 from venv import logger
-import iyzipay
 from flask_login import  login_user, logout_user
 import mysql.connector
 import requests,os
@@ -119,8 +117,7 @@ def register():
                     INSERT INTO dogrulama_kodlari (kullanici_id, kod, olusturma_tarihi, gecerlilik_suresi)
                     VALUES (%s, %s, %s, %s)
                     """,
-                    (kullanici_id, kod, datetime.now(), gecerlilik_suresi)
-                )
+                    (kullanici_id, kod, datetime.now(), gecerlilik_suresi) )
                 connection.commit()
 
                 # Doğrulama e-postası gönder
@@ -275,11 +272,9 @@ def index():
             cursor = connection.cursor(dictionary=True)
             # Hata raporlarını getir
             cursor.execute("""
-                           SELECT h.hata_id,
-                                  u.urun_adi,
+                           SELECT h.hata_id,  u.urun_adi,
                                   b.bayi_adi,
-                                  a.ad AS alici_adi,
-                                  s.ad AS satici_adi,
+                                  a.ad AS alici_adi,  s.ad AS satici_adi,
                                   h.hata_tarihi,
                                   h.hata_turu,
                                   h.durum
@@ -325,15 +320,12 @@ def hata_ekle():
                     INSERT INTO hatalar (urun_id, bayi_id, alici_id, satici_id, hata_tarihi, hata_turu, aciklama, durum, kullanici_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    form.urun_adi.data,
-                    form.bayi_adi.data,
-                    form.alici_adi.data or None,
-                    form.satici_adi.data or None,
+                    form.urun_adi.data,  form.bayi_adi.data,
+                    form.alici_adi.data or None,   form.satici_adi.data or None,
                     form.hata_tarihi.data,
                     form.hata_turu.data,
                     form.aciklama.data,
-                    form.durum.data,
-                    current_user.id
+                    form.durum.data,   current_user.id
                 ))
                 connection.commit()
                 flash('Hata raporu başarıyla eklendi!', 'success')
@@ -349,15 +341,13 @@ def hata_duzenle(hata_id):
         with get_db_connection() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute("""
-                           SELECT hata_id,
-                                  urun_id,
+                           SELECT hata_id,     urun_id,
                                   bayi_id,
                                   alici_id,
                                   satici_id,
                                   hata_tarihi,
                                   hata_turu,
-                                  aciklama,
-                                  durum
+                                  aciklama,    durum
                            FROM hatalar
                            WHERE hata_id = %s
                              AND kullanici_id = %s

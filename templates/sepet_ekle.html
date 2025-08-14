@@ -1,234 +1,126 @@
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-    <meta charset="UTF-8">
+<!DOCTYPE html><html lang="tr"><head> <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Adopen - Sepete Ekle</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        body {
+    <style>    body {
             background-color: #f8f9fa;
-            font-family: 'Arial', sans-serif;
-        }
+            font-family: 'Arial', sans-serif; }
         .container {
             margin-top: 3rem;
-            margin-bottom: 3rem;
-        }
+            margin-bottom: 3rem;}
         .alert-adopen {
             border-left: 4px solid #1e3b77;
-            border-radius: 8px;
-        }
-        .btn-adopen {
+            border-radius: 8px; }.btn-adopen {
             background-color: #1e3b77;
             color: white;
             transition: all 0.3s ease;
-            border-radius: 0.5rem;
-        }
-        .btn-adopen:hover {
+            border-radius: 0.5rem;} .btn-adopen:hover {
             background-color: #15305b;
-            transform: translateY(-2px);
-        }
-        .card {
+            transform: translateY(-2px);  }.card {
             border: none;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-        }
-        .card-header {
+            border-radius: 10px;}.card-header {
             background-color: #1e3b77;
-            color: white;
-            border-radius: 10px 10px 0 0;
-        }
-        .form-select, .form-control {
+            color: white;  border-radius: 10px 10px 0 0;     }  .form-select, .form-control {
             border-radius: 0.5rem;
-            border: 1px solid #ced4da;
-        }
-        .form-label {
-            color: #1e3b77;
-        }
-        .wave-background {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            z-index: -1;
-        }
-        .spinner {
-            display: none;
-            margin-left: 10px;
-        }
-        .error-message {
-            font-size: 0.9rem;
-            margin-top: 0.2rem;
-        }
-    </style>
-</head>
-<body>
+           border: 1px solid #ced4da;  }    .form-label {
+            color: #1e3b77;}.wave-background {
+            position: fixed;bottom: 0;left: 0;  width: 100%;z-index: -1;    }.spinner {
+            display: none;  margin-left: 10px;}  .error-message {
+            font-size: 0.9rem;  margin-top: 0.2rem;}  </style></head><body>
     <div class="container">
         <h2 class="mb-4"><i class="fas fa-shopping-cart me-2"></i>Sepete Ekle</h2>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                        {{ message }}
+        {% with messages = get_flashed_messages(with_categories=true) %}  {% if messages %}
+                {% for category, message in messages %}     {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Yeni Ürün Ekle</h5>
-            </div>
-            <div class="card-body">
+                    </div>  {% endfor %}{% endif %}    {% endwith %}  <div class="card">
+            <div class="card-header"><h5 class="mb-0">Yeni Ürün Ekle</h5>
+            </div>  <div class="card-body">
                 <form method="POST" id="sepet_ekle_form">
-                    {{ form.hidden_tag() }}
-                    <div class="row">
+                    {{ form.hidden_tag() }}  <div class="row">
                         <div class="col-md-6 mb-3">
                             {{ form.urun_adi.label(class="form-label fw-bold") }}
                             {{ form.urun_adi(class="form-select", id="urun_adi") }}
                             {% if form.urun_adi.errors %}
                                 {% for error in form.urun_adi.errors %}
                                     <span class="text-danger error-message">{{ error }}</span>
-                                {% endfor %}
-                            {% endif %}
-                        </div>
+                                {% endfor %} {% endif %}  </div>
                         <div class="col-md-6 mb-3">
                             {{ form.satici_adi.label(class="form-label fw-bold") }}
                             {{ form.satici_adi(class="form-select", id="satici_adi") }}
                             {% if form.satici_adi.errors %}
                                 {% for error in form.satici_adi.errors %}
                                     <span class="text-danger error-message">{{ error }}</span>
-                                {% endfor %}
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
+                                {% endfor %} {% endif %}   </div>    </div>
+                    <div class="row">  <div class="col-md-6 mb-3">
                             {{ form.renk_ozellik_id.label(class="form-label fw-bold") }}
                             {{ form.renk_ozellik_id(class="form-select", id="renk_ozellik_id") }}
                             {% if form.renk_ozellik_id.errors %}
                                 {% for error in form.renk_ozellik_id.errors %}
                                     <span class="text-danger error-message">{{ error }}</span>
-                                {% endfor %}
-                            {% endif %}
-                        </div>
+                                {% endfor %}{% endif %}</div>
                         <div class="col-md-6 mb-3">
                             {{ form.cam_tipi_ozellik_id.label(class="form-label fw-bold") }}
                             {{ form.cam_tipi_ozellik_id(class="form-select", id="cam_tipi_ozellik_id") }}
                             {% if form.cam_tipi_ozellik_id.errors %}
                                 {% for error in form.cam_tipi_ozellik_id.errors %}
                                     <span class="text-danger error-message">{{ error }}</span>
-                                {% endfor %}
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="mb-3">
+                                {% endfor %}{% endif %}</div></div><div class="mb-3">
                         {{ form.miktar.label(class="form-label fw-bold") }}
                         {{ form.miktar(class="form-control", placeholder="Miktar", type="number", min="1") }}
-                        {% if form.miktar.errors %}
-                            {% for error in form.miktar.errors %}
-                                <span class="text-danger error-message">{{ error }}</span>
-                            {% endfor %}
-                        {% endif %}
-                    </div>
-                    <div class="d-flex align-items-center">
+                        {% if form.miktar.errors %}{% for error in form.miktar.errors %}
+                                <span class="text-danger error-message">{{ error }}</span>  {% endfor %}
+                        {% endif %}</div>  <div class="d-flex align-items-center">
                         {{ form.submit(class="btn btn-primary btn-adopen", id="submit_btn") }}
                         <span class="spinner-border spinner-border-sm spinner" role="status" aria-hidden="true"></span>
                         <a href="{{ url_for('sepet') }}" class="btn btn-secondary btn-adopen ms-2">
                             <i class="fas fa-arrow-left"></i> Geri Dön
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+                        </a>   </div></form>  </div></div></div>
     <svg class="wave-background" viewBox="0 0 1440 320">
-        <path fill="#1e3b77" fill-opacity="1"
-              d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,229.3C672,245,768,267,864,256C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-    </svg>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+        <path fill="#1e3b77" fill-opacity="1"           d="M0,288L48,272C96,256,192,224,288,213.3C384,203,480,213,576,229.3C672,245,768,267,864,256C960,245,1056,203,1152,181.3C1248,160,1344,160,1392,160L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+    </svg><script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         $(document).ready(function() {
-            // Satıcı seçimi kontrolü
             $('#satici_adi').on('change', function() {
-                if ($(this).val() === '0') {
-                    $(this).addClass('is-invalid');
-                } else {
-                    $(this).removeClass('is-invalid');
-                }
-            });
-
-            // Ürün seçimiyle özelliklerin yüklenmesi
-            $('#urun_adi').on('change', function() {
+                if ($(this).val() === '0') {   $(this).addClass('is-invalid');  } else {
+                    $(this).removeClass('is-invalid');}  });  $('#urun_adi').on('change', function() {
                 var urun_id = $(this).val();
-                if (urun_id && urun_id !== '0') {
-                    $.ajax({
+                if (urun_id && urun_id !== '0') {$.ajax({
                         url: '{{ url_for("get_ozellikler") }}',
-                        data: { urun_id: urun_id },
-                        type: 'POST',
-                        method: 'POST',
-                        success: function(response) {
+                        data: { urun_id: urun_id },  type: 'POST',
+                        method: 'POST',   success: function(response) {
                             if (response.error) {
                                 alert('Özellikler yüklenemedi: ' + response.error);
-                                return;
-                            }
+                                return;    }
                             $('#renk_ozellik_id').empty().append('<option value="0">Renk seçin</option>');
-                            $('#cam_tipi_ozellik_id').empty().append('<option value="0">Cam tipi seçin</option>');
-                            response.renkler.forEach(function(renk) {
-                                $('#renk_ozellik_id').append('<option value="' + renk.ozellik_id + '">' + renk.deger + ' (+' + renk.fiyat_ekleme + ' TL)</option>');
-                            });
+                            $('#cam_tipi_ozellik_id').empty().append('<option value="0">Cam tipi seçin</option>');response.renkler.forEach(function(renk) {
+                                $('#renk_ozellik_id').append('<option value="' + renk.ozellik_id + '">' + renk.deger + ' (+' + renk.fiyat_ekleme + ' TL)</option>');   });
                             response.cam_tipleri.forEach(function(cam) {
-                                $('#cam_tipi_ozellik_id').append('<option value="' + cam.ozellik_id + '">' + cam.deger + ' (+' + cam.fiyat_ekleme + ' TL)</option>');
-                            });
-                        },
+                                $('#cam_tipi_ozellik_id').append('<option value="' + cam.ozellik_id + '">' + cam.deger + ' (+' + cam.fiyat_ekleme + ' TL)</option>');  });   },
                         error: function(error) {
-                            alert('Özellikler yüklenemedi: ' + error.responseJSON?.error || 'Bilinmeyen hata');
-                        }
-                    });
-                } else {
+                            alert('Özellikler yüklenemedi: ' + error.responseJSON?.error || 'Bilinmeyen hata');  }     });} else {
                     $('#renk_ozellik_id').empty().append('<option value="0">Renk seçin</option>');
-                    $('#cam_tipi_ozellik_id').empty().append('<option value="0">Cam tipi seçin</option>');
-                }
-            });
-
-            // Form gönderimi kontrolü
-            $('#sepet_ekle_form').on('submit', function(e) {
-                var urun_id = $('#urun_adi').val();
-                var satici_id = $('#satici_adi').val();
-                var miktar = $('#miktar').val();
-
-                if (!urun_id || urun_id === '0') {
+                    $('#cam_tipi_ozellik_id').empty().append('<option value="0">Cam tipi seçin</option>');   }      });   $('#sepet_ekle_form').on('submit', function(e) {
+                var urun_id = $('#urun_adi').val();                var satici_id = $('#satici_adi').val();
+                var miktar = $('#miktar').val();  if (!urun_id || urun_id === '0') {
                     e.preventDefault();
-                    alert('Lütfen bir ürün seçin.');
-                    $('#urun_adi').addClass('is-invalid');
-                    return false;
-                }
+                    alert('Lütfen bir ürün seçin.');    $('#urun_adi').addClass('is-invalid');
+                    return false; }
                 if (!satici_id || satici_id === '0') {
                     e.preventDefault();
-                    alert('Lütfen bir satıcı seçin.');
-                    $('#satici_adi').addClass('is-invalid');
-                    return false;
-                }
+                    alert('Lütfen bir satıcı seçin.');       $('#satici_adi').addClass('is-invalid');
+                    return false;   }
                 if (!miktar || miktar < 1) {
                     e.preventDefault();
                     alert('Miktar en az 1 olmalıdır.');
                     $('#miktar').addClass('is-invalid');
-                    return false;
-                }
-
-                // Gönderim sırasında spinner göster
+                    return false;}
                 $('#submit_btn').prop('disabled', true);
-                $('.spinner').show();
-            });
-
-            // Form alanlarında hata sınıfını kaldırma
+                $('.spinner').show();});
             $('#urun_adi, #satici_adi, #miktar').on('change', function() {
                 if ($(this).val() && $(this).val() !== '0') {
                     $(this).removeClass('is-invalid');
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+                }  });   });
+    </script></body></html>
